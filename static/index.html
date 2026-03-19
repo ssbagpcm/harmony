@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Harmony</title>
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%235865f2%22/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@0.363.0/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+
+<body>
+
+  <!-- Auth -->
+  <div id="auth-screen">
+    <div class="auth-card">
+      <div class="auth-logo">Harmony</div>
+      <div class="auth-desc">Welcome back! Sign in to continue.</div>
+
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="tab-in" onclick="switchTab('in')">Sign In</div>
+        <div class="auth-tab" id="tab-up" onclick="switchTab('up')">Create Account</div>
+      </div>
+
+      <form id="pane-in" onsubmit="event.preventDefault(); doLogin()">
+        <div class="auth-err" id="err-in"></div>
+        <div class="fg">
+          <label class="fl">Username</label>
+          <input class="fi" id="in-user" type="text" placeholder="username" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+        </div>
+        <div class="fg">
+          <label class="fl">Password</label>
+          <input class="fi" id="in-pass" type="password" placeholder="••••••••" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+        </div>
+        <button class="btn btn-primary" type="submit" style="width:100%;padding:10px">Sign In</button>
+      </form>
+
+      <form id="pane-up" style="display:none" onsubmit="event.preventDefault(); doRegister()">
+        <div class="auth-err" id="err-up"></div>
+        <div class="fg">
+          <label class="fl">Username</label>
+          <input class="fi" id="up-username" type="text" maxlength="32" placeholder="cooluser">
+        </div>
+        <div class="fg">
+          <label class="fl">Password</label>
+          <input class="fi" id="up-pass" type="password" placeholder="At least 6 characters">
+        </div>
+        <button class="btn btn-primary" type="submit" style="width:100%;padding:10px">Create Account</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="app" style="display:none">
+    <!-- Rail -->
+    <nav id="rail">
+      <div class="rail-icon active" id="rail-dm" onclick="showDMs()" onmouseenter="tip(event,'Direct Messages')"
+        onmouseleave="hideTip()">
+        <span class="rail-indicator"></span>
+        <i data-lucide="message-square" style="width:22px;height:22px"></i>
+      </div>
+      <div class="rail-sep"></div>
+
+      <div id="rail-servers"></div>
+
+      <div class="rail-sep"></div>
+
+      <div class="rail-action"
+        onclick="showPrompt('Join Server','Enter invite or share code:','',code => { if(code) joinServerByInvite(code) })"
+        onmouseenter="tip(event,'Join Server')" onmouseleave="hideTip()">
+        <i data-lucide="log-in" style="width:20px;height:20px"></i>
+      </div>
+
+      <div class="rail-action" onclick="openModal('m-create-server')" onmouseenter="tip(event,'Create Server')"
+        onmouseleave="hideTip()">
+        <i data-lucide="plus" style="width:20px;height:20px"></i>
+      </div>
+
+      <div class="rail-spacer"></div>
+
+      <div class="rail-icon" id="rail-project-docs" onclick="openProjectDocsLink()"
+        onmouseenter="tip(event,'Project Docs')" onmouseleave="hideTip()">
+        <i data-lucide="book-open" style="width:20px;height:20px"></i>
+      </div>
+    </nav>
+
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div id="sidebar-top" onclick="toggleSrvDropdown(event)">
+        <span class="side-title" id="side-title">Direct Messages</span>
+        <i data-lucide="chevron-down" id="side-chevron"
+          style="width:16px;height:16px;color:var(--t3);transition:.15s"></i>
+      </div>
+      <div id="srv-dropdown"></div>
+      <div id="ch-list"></div>
+
+      <div id="user-panel">
+        <div id="up-av-wrap" onclick="toggleStatusPopup(event)" style="cursor:pointer"></div>
+        <div id="up-info" onclick="toggleStatusPopup(event)">
+          <div id="up-name">—</div>
+          <div id="up-tag">#0000</div>
+        </div>
+        <div class="up-btn" onclick="openSettings()" title="Settings">
+          <i data-lucide="settings" style="width:16px;height:16px"></i>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main id="content">
+      <div id="ch-hdr">
+        <i data-lucide="hash" id="ch-hdr-icon" style="width:20px;height:20px;color:var(--t3)"></i>
+        <span id="ch-hdr-name" style="font-size:16px;font-weight:700">—</span>
+        <div class="hdr-sep" id="topic-sep" style="display:none"></div>
+        <span id="ch-hdr-topic"></span>
+        <div style="flex:1"></div>
+
+        <div class="hdr-btn" id="btn-srv-settings" title="Server Settings" onclick="openServerSettings()"
+          style="display:none">
+          <i data-lucide="settings" style="width:18px;height:18px"></i>
+        </div>
+        <div class="hdr-btn" id="btn-ml" title="Member List" onclick="toggleML()" style="display:none">
+          <i data-lucide="users" style="width:18px;height:18px"></i>
+        </div>
+        <div class="hdr-btn" id="btn-share" title="Share" onclick="shareCurrent()" style="display:none">
+          <i data-lucide="share-2" style="width:18px;height:18px"></i>
+        </div>
+        <div class="hdr-btn" id="btn-search" title="Search" onclick="toggleSearch()">
+          <i data-lucide="search" style="width:18px;height:18px"></i>
+        </div>
+        <div class="hdr-btn" id="btn-pins" title="Pinned Messages" onclick="togglePins()">
+          <i data-lucide="pin" style="width:18px;height:18px"></i>
+        </div>
+        <div class="hdr-btn" id="btn-mentions" title="Mentions & Replies" onclick="toggleMentions()">
+          <i data-lucide="at-sign" style="width:18px;height:18px"></i>
+        </div>
+      </div>
+
+      <div id="msgs-wrap">
+        <div id="msgs-list"></div>
+        <div id="jump-to-bottom" onclick="scrollBottom(true)">
+          <i data-lucide="arrow-down" style="width:14px;height:14px"></i>
+          <span id="jtb-count"></span>
+        </div>
+      </div>
+
+      <div id="typing-bar">
+        <div id="typing-inner"></div>
+      </div>
+
+      <div id="input-wrap">
+        <div id="reply-ui" class="reply-bar-ui" style="display:none">
+          <i data-lucide="reply" style="width:14px;height:14px;color:var(--t3)"></i>
+          <div class="reply-bar-txt" id="reply-ui-txt"></div>
+          <div class="up-btn" onclick="clearReply()" style="width:24px;height:24px">
+            <i data-lucide="x" style="width:13px;height:13px"></i>
+          </div>
+        </div>
+
+        <div class="input-box">
+          <div class="input-btn" id="btn-attach" onclick="document.getElementById('file-in').click()" title="Attach">
+            <i data-lucide="plus-circle" style="width:20px;height:20px"></i>
+          </div>
+          <input type="file" id="file-in" style="display:none" onchange="uploadFile(this)">
+          <textarea id="msg-input" rows="1" placeholder="Select a channel" onkeydown="inputKey(event)"
+            oninput="autoResize(this)"></textarea>
+          <div class="input-btn" id="btn-emoji" onclick="openEmojiPicker()" title="Emoji">
+            <i data-lucide="smile" style="width:20px;height:20px"></i>
+          </div>
+          <div class="input-btn" id="btn-send" onclick="sendMsg()" title="Send" style="color:var(--brand)">
+            <i data-lucide="send" style="width:20px;height:20px"></i>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Pins sidebar -->
+    <aside id="pins-panel">
+      <div
+        style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:15px;font-weight:700">Pinned Messages</div>
+        <div class="up-btn" onclick="closePins()"><i data-lucide="x" style="width:16px;height:16px"></i></div>
+      </div>
+      <div id="pins-body"></div>
+    </aside>
+
+    <!-- Mentions sidebar -->
+    <aside id="mentions-panel">
+      <div
+        style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:15px;font-weight:700">Mentions & Replies</div>
+        <div class="up-btn" onclick="closeMentions()"><i data-lucide="x" style="width:16px;height:16px"></i></div>
+      </div>
+      <div id="mentions-body"></div>
+    </aside>
+
+  <!-- Member list -->
+    <aside id="ml-panel">
+      <div id="ml-hdr">
+        <div>
+          <div style="font-size:15px;font-weight:800">Members</div>
+          <div class="small-muted" id="ml-count">0 total</div>
+        </div>
+        <div class="up-btn" onclick="toggleML()"><i data-lucide="x" style="width:16px;height:16px"></i></div>
+      </div>
+      <div id="ml-body"></div>
+    </aside>
+  </div>
+
+  <!-- Status popup -->
+  <div id="status-popup">
+    <div class="status-popup-user">
+      <div class="status-popup-name" id="sp-name">—</div>
+      <div class="status-popup-disc" id="sp-disc">#0000</div>
+    </div>
+    <div class="sp-item" onclick="setStatus('online')">
+      <div class="sp-dot online"></div>Online
+    </div>
+    <div class="sp-item" onclick="setStatus('idle')">
+      <div class="sp-dot idle"></div>Idle
+    </div>
+    <div class="sp-item" onclick="setStatus('dnd')">
+      <div class="sp-dot dnd"></div>Do Not Disturb
+    </div>
+    <div class="sp-item" onclick="setStatus('invisible')">
+      <div class="sp-dot invisible"></div>Invisible
+    </div>
+    <div class="ctx-sep"></div>
+    <div class="sp-item" onclick="closeAllPopups();openSettings()"><i data-lucide="settings"
+        style="width:14px;height:14px"></i>Settings</div>
+    <div class="sp-item" style="color:var(--danger)" onclick="doLogout()"><i data-lucide="log-out"
+        style="width:14px;height:14px"></i>Log out</div>
+  </div>
+
+  <!-- Context menu -->
+  <div id="ctx-menu"></div>
+
+  <!-- Tooltip -->
+  <div class="tooltip" id="tooltip"></div>
+
+  <!-- Media viewer -->
+  <div id="lightbox" onclick="handleLightboxBackdropClick(event)">
+    <a class="lightbox-close lightbox-download" id="lb-download" href="#" target="_blank" rel="noopener" title="Download image">
+      <i data-lucide="download" style="width:18px;height:18px"></i>
+    </a>
+    <button class="lightbox-close" onclick="closeLightbox()" title="Close image viewer">
+      <i data-lucide="x" style="width:18px;height:18px"></i>
+    </button>
+    <div class="lightbox-stage" id="lb-stage">
+      <img id="lb-img" src="" alt="" draggable="false">
+    </div>
+  </div>
+
+  <!-- Create server -->
+  <div class="overlay" id="m-create-server" onclick="overlayClick(event,'m-create-server')">
+    <div class="modal" onclick="event.stopPropagation()" style="width:400px">
+      <div class="modal-hdr">
+        <div>
+          <div class="modal-title">Create a Server</div>
+          <div class="modal-sub">Give your community a home.</div>
+        </div>
+        <div class="modal-x" onclick="closeModal('m-create-server')"><i data-lucide="x"
+            style="width:16px;height:16px"></i></div>
+      </div>
+      <div class="modal-body">
+        <div class="fg">
+          <label class="fl">Server Name</label>
+          <input class="fi" id="cs-name" type="text" maxlength="100" placeholder="My Awesome Server">
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" onclick="closeModal('m-create-server')">Cancel</button>
+        <button class="btn btn-primary" onclick="createServer()">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Channel editor -->
+  <div class="overlay" id="m-channel-editor" onclick="overlayClick(event,'m-channel-editor')">
+    <div class="modal" onclick="event.stopPropagation()" style="width:420px">
+      <div class="modal-hdr">
+        <div>
+          <div class="modal-title" id="ch-editor-title">Create Channel</div>
+        </div>
+        <div class="modal-x" onclick="closeModal('m-channel-editor')"><i data-lucide="x"
+            style="width:16px;height:16px"></i></div>
+      </div>
+      <div class="modal-body">
+        <div class="fg">
+          <label class="fl">Channel Type</label>
+          <select class="fi" id="cc-type">
+            <option value="text">Text</option>
+            <option value="voice">Voice</option>
+            <option value="category">Category</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label class="fl">Name</label>
+          <input class="fi" id="cc-name" type="text" maxlength="100" placeholder="new-channel">
+        </div>
+        <div class="fg">
+          <label class="fl">Topic</label>
+          <input class="fi" id="cc-topic" type="text" maxlength="1024" placeholder="What's this channel about?">
+        </div>
+        <div class="fg">
+          <label class="fl">Parent Category</label>
+          <select class="fi" id="cc-parent"></select>
+        </div>
+        <div class="fg">
+          <label class="fl">NSFW</label>
+          <select class="fi" id="cc-nsfw">
+            <option value="false">No</option>
+            <option value="true">Yes</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" onclick="closeModal('m-channel-editor')">Cancel</button>
+        <button class="btn btn-primary" id="ch-editor-save" onclick="saveChannelEditor()">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Invite -->
+  <div class="overlay" id="m-invite" onclick="overlayClick(event,'m-invite')">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-hdr">
+        <div>
+          <div class="modal-title" id="inv-title">Share Link</div>
+          <div class="modal-sub" id="inv-srv-name"></div>
+        </div>
+        <div class="modal-x" onclick="closeModal('m-invite')"><i data-lucide="x" style="width:16px;height:16px"></i>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="invite-box">
+          <div class="invite-code" id="inv-code">Generating...</div>
+          <button class="btn btn-primary" style="padding:6px 12px;font-size:12px" onclick="copyInvite()">Copy</button>
+        </div>
+        <div class="small-muted" id="inv-help" style="margin-top:8px">Share this code. It never expires.</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" onclick="closeModal('m-invite')">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- User settings -->
+  <div class="overlay" id="m-settings" onclick="overlayClick(event,'m-settings')">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-hdr">
+        <div>
+          <div class="modal-title">User Settings</div>
+        </div>
+        <div class="modal-x" onclick="closeModal('m-settings')"><i data-lucide="x" style="width:16px;height:16px"></i>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="fg"><label class="fl">Username</label><input class="fi" id="set-user" type="text" maxlength="32">
+        </div>
+        <div class="fg"><label class="fl">Bio</label><input class="fi" id="set-bio" type="text" maxlength="256"
+            placeholder="Tell us about yourself"></div>
+        <div class="fg"><label class="fl">Avatar URL</label><input class="fi" id="set-av" type="url"
+            placeholder="https://..."></div>
+        <div class="fg"><label class="fl">Banner URL</label><input class="fi" id="set-bn" type="url"
+            placeholder="https://..."></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-danger" onclick="doLogout()" style="margin-right:auto">Log Out</button>
+        <button class="btn btn-ghost" onclick="closeModal('m-settings')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- User profile -->
+  <div class="overlay" id="m-profile" onclick="overlayClick(event,'m-profile')">
+    <div class="modal" onclick="event.stopPropagation()" style="width:360px">
+      <div class="modal-hdr">
+        <div>
+          <div class="modal-title">User Profile</div>
+        </div>
+        <div class="modal-x" onclick="closeModal('m-profile')"><i data-lucide="x" style="width:16px;height:16px"></i>
+        </div>
+      </div>
+      <div class="modal-body" id="profile-body" style="padding:12px 0 0;overflow:hidden"></div>
+    </div>
+  </div>
+
+  <!-- Manage roles -->
+  <div class="overlay" id="m-manage-roles" onclick="overlayClick(event,'m-manage-roles')">
+    <div class="modal" onclick="event.stopPropagation()" style="width:360px">
+      <div class="modal-hdr">
+        <div>
+          <div class="modal-title">Manage Roles</div>
+        </div>
+        <div class="modal-x" onclick="closeModal('m-manage-roles')"><i data-lucide="x"
+            style="width:16px;height:16px"></i></div>
+      </div>
+      <div class="modal-body" id="manage-roles-body"></div>
+    </div>
+  </div>
+
+  <!-- Role editor -->
+  <div class="overlay" id="m-role-editor" onclick="overlayClick(event,'m-role-editor')">
+    <div class="modal" onclick="event.stopPropagation()" style="width:520px">
+      <div class="modal-hdr">
+        <div>
+          <div class="modal-title" id="role-editor-title">Create Role</div>
+          <div class="modal-sub">Configure role properties and permissions.</div>
+        </div>
+        <div class="modal-x" onclick="closeModal('m-role-editor')"><i data-lucide="x"
+            style="width:16px;height:16px"></i></div>
+      </div>
+      <div class="modal-body">
+        <div class="fg"><label class="fl">Role Name</label><input class="fi" id="role-name" type="text" maxlength="100"
+            placeholder="Moderator"></div>
+        <div class="fg"><label class="fl">Color</label><input class="fi" id="role-color" type="color" value="#5865f2"
+            style="height:42px;padding:4px"></div>
+        <div class="fg"><label class="fl">Mentionable</label>
+          <select class="fi" id="role-mentionable">
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+        <div class="fg"><label class="fl">Hoisted</label>
+          <select class="fi" id="role-hoisted">
+            <option value="false">No</option>
+            <option value="true">Yes</option>
+          </select>
+        </div>
+
+        <div class="fl" style="margin-bottom:8px">Permissions</div>
+        <div id="role-perms"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" onclick="closeModal('m-role-editor')">Cancel</button>
+        <button class="btn btn-primary" id="role-editor-save" onclick="saveRoleEditor()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Server settings -->
+  <div class="overlay" id="m-srv-settings" onclick="overlayClick(event,'m-srv-settings')">
+    <div class="modal" onclick="event.stopPropagation()" style="width:760px;height:540px;max-height:85vh">
+      <div class="modal-hdr">
+        <div>
+          <div class="modal-title" id="srv-settings-title">Server Settings</div>
+        </div>
+        <div class="modal-x" onclick="closeModal('m-srv-settings')"><i data-lucide="x"
+            style="width:16px;height:16px"></i></div>
+      </div>
+      <div class="modal-body" id="srv-settings-body" style="padding:0;height:calc(100% - 50px)"></div>
+    </div>
+  </div>
+
+  <!-- Prompt -->
+  <div class="overlay" id="m-prompt" onclick="overlayClick(event,'m-prompt')">
+    <div class="modal" onclick="event.stopPropagation()" style="width:380px">
+      <div class="modal-hdr">
+        <div>
+          <div class="modal-title" id="prompt-title">Input</div>
+        </div>
+        <div class="modal-x" onclick="closePrompt()"><i data-lucide="x" style="width:16px;height:16px"></i></div>
+      </div>
+      <div class="modal-body">
+        <div id="prompt-message" style="margin-bottom:16px;color:var(--t2)"></div>
+        <input class="fi" id="prompt-input" type="text" style="margin-bottom:16px">
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-ghost" onclick="closePrompt()">Cancel</button>
+          <button class="btn btn-primary" onclick="confirmPrompt()">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm -->
+  <div class="overlay" id="m-confirm" onclick="overlayClick(event,'m-confirm')">
+    <div class="modal" onclick="event.stopPropagation()" style="width:380px">
+      <div class="modal-hdr">
+        <div>
+          <div class="modal-title" id="confirm-title">Confirm</div>
+        </div>
+        <div class="modal-x" onclick="closeConfirm()"><i data-lucide="x" style="width:16px;height:16px"></i></div>
+      </div>
+      <div class="modal-body">
+        <div id="confirm-message" style="margin-bottom:16px;color:var(--t2)"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-ghost" onclick="closeConfirm()">Cancel</button>
+          <button class="btn btn-danger" onclick="confirmAction()">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search -->
+  <div class="overlay" id="m-search" onclick="overlayClick(event,'m-search')">
+    <div class="modal" onclick="event.stopPropagation()" style="width:520px">
+      <div class="modal-hdr">
+        <div>
+          <div class="modal-title">Search Messages</div>
+        </div>
+        <div class="modal-x" onclick="closeSearchModal()"><i data-lucide="x" style="width:16px;height:16px"></i></div>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          <input class="fi" id="sq" type="text" placeholder="Search..." style="flex:1"
+            onkeydown="if(event.key==='Enter')doSearch()">
+          <button class="btn btn-primary" onclick="doSearch()">Search</button>
+        </div>
+        <div id="s-results" style="max-height:360px;overflow-y:auto"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Open DM -->
+  <div class="overlay" id="m-open-dm" onclick="overlayClick(event,'m-open-dm')">
+    <div class="modal" onclick="event.stopPropagation()" style="width:380px">
+      <div class="modal-hdr">
+        <div>
+          <div class="modal-title">New Direct Message</div>
+        </div>
+        <div class="modal-x" onclick="closeModal('m-open-dm')"><i data-lucide="x" style="width:16px;height:16px"></i>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="fg"><label class="fl">User ID</label><input class="fi" id="dm-uid" type="text"
+            placeholder="usr_..."></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" onclick="closeModal('m-open-dm')">Cancel</button>
+        <button class="btn btn-primary" onclick="openDMModal()">Open</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="m-create-group" onclick="overlayClick(event,'m-create-group')">
+    <div class="modal" onclick="event.stopPropagation()" style="width:420px">
+      <div class="modal-hdr">
+        <div>
+          <div class="modal-title">Create Group</div>
+        </div>
+        <div class="modal-x" onclick="closeModal('m-create-group')"><i data-lucide="x" style="width:16px;height:16px"></i></div>
+      </div>
+      <div class="modal-body">
+        <div class="fg">
+          <label class="fl">Group Name</label>
+          <input class="fi" id="group-name" type="text" placeholder="My group">
+        </div>
+        <div class="small-muted" style="margin-bottom:10px">Select friends to add.</div>
+        <div id="group-friends-list" style="max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" onclick="closeModal('m-create-group')">Cancel</button>
+        <button class="btn btn-primary" onclick="createGroup()">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Emoji -->
+  <div class="overlay" id="m-emoji" onclick="closeModal('m-emoji')">
+    <div class="modal" onclick="event.stopPropagation()" style="width:300px;position:absolute" id="emoji-pos">
+      <div class="modal-body" style="padding:10px">
+        <div class="emoji-grid" id="emoji-grid"></div>
+      </div>
+    </div>
+  </div>
+  <script src="/static/js/00-core.js"></script>
+  <script src="/static/js/01-permissions-gateway.js"></script>
+  <script src="/static/js/02-auth-boot.js"></script>
+  <script src="/static/js/03-presence-rail-header.js"></script>
+  <script src="/static/js/04-dms-messages.js"></script>
+  <script src="/static/js/05-typing-members-search.js"></script>
+  <script src="/static/js/06-upload-crud-settings.js"></script>
+  <script src="/static/js/07-profile-context-init.js"></script>
+</body>
+
+</html>
