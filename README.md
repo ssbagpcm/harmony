@@ -7,7 +7,7 @@
 - `static/styles.css`: extracted styles
 - `static/app.js`: extracted client logic
 
-# Run the app like this : 
+# Run the app 
 
 1) Create a venv and activate it
    ```python3 -m venv venv```
