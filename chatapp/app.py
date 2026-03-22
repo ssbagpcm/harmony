@@ -25,6 +25,8 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE servers ADD COLUMN banner_url VARCHAR",
             "ALTER TABLE users ADD COLUMN banner_url VARCHAR",
             "ALTER TABLE users ADD COLUMN bio VARCHAR(256)",
+            "ALTER TABLE users ADD COLUMN pronouns VARCHAR(20)",
+            "ALTER TABLE dm_participants ADD COLUMN is_hidden BOOLEAN DEFAULT 0",
         ]
         for stmt in migrations:
             try:
@@ -111,6 +113,8 @@ async def update_me(
         user.username = body.username
     if body.bio is not None:
         user.bio = body.bio
+    if body.pronouns is not None:
+        user.pronouns = body.pronouns
     if body.avatar_url is not None:
         user.avatar_url = body.avatar_url
     if body.banner_url is not None:
@@ -131,6 +135,7 @@ async def update_me(
             "username": user.username,
             "avatar_url": user.avatar_url,
             "bio": user.bio,
+            "pronouns": user.pronouns,
             "banner_url": user.banner_url,
             "status": user.status,
         },
@@ -982,6 +987,25 @@ async def create_role(
     return r
 
 
+@app.patch("/servers/{server_id}/roles/positions", status_code=204, tags=["Roles"])
+async def update_role_positions(
+    server_id: str,
+    updates: list[RolePosIn],
+    user: User = Depends(_dep_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_or_404(db, Server, server_id, "Server not found")
+    await _require(db, user.id, server_id, Perm.MANAGE_ROLES)
+
+    for u in updates:
+        r = await db.get(Role, u.id)
+        if r and r.server_id == server_id and not r.is_everyone:
+            r.position = u.position
+
+    await db.commit()
+    return None
+
+
 @app.patch("/servers/{server_id}/roles/{role_id}", response_model=RoleOut, tags=["Roles"])
 async def update_role(
     server_id: str,
@@ -1057,25 +1081,6 @@ async def delete_role(
         server_id,
         {"op": "ROLE_DELETE", "data": {"role_id": role_id, "server_id": server_id}},
     )
-    return None
-
-
-@app.patch("/servers/{server_id}/roles/positions", status_code=204, tags=["Roles"])
-async def update_role_positions(
-    server_id: str,
-    updates: list[RolePosIn],
-    user: User = Depends(_dep_user),
-    db: AsyncSession = Depends(get_db),
-):
-    await _get_or_404(db, Server, server_id, "Server not found")
-    await _require(db, user.id, server_id, Perm.MANAGE_ROLES)
-
-    for u in updates:
-        r = await db.get(Role, u.id)
-        if r and r.server_id == server_id and not r.is_everyone:
-            r.position = u.position
-
-    await db.commit()
     return None
 
 
@@ -1749,12 +1754,12 @@ async def list_relationships(
     db: AsyncSession = Depends(get_db),
 ):
     res = await db.execute(
-        select(Channel)
+        select(Channel, DMParticipant)
         .join(DMParticipant, DMParticipant.channel_id == Channel.id)
         .where(DMParticipant.user_id == user.id)
         .order_by(Channel.created_at.asc())
     )
-    channels = res.scalars().all()
+    channels = res.all()
 
     note = None
     friends: list[DMChannelOut] = []
@@ -1762,15 +1767,21 @@ async def list_relationships(
     pending: list[DMChannelOut] = []
     requests: list[DMChannelOut] = []
 
-    for ch in channels:
+    for ch, participant in channels:
         out = await _build_dm_channel_out(db, ch, user.id)
         if ch.type == "note":
+            if participant.is_hidden:
+                continue
             note = out
             continue
         if ch.type == "group":
+            if participant.is_hidden:
+                continue
             groups.append(out)
             continue
         if ch.type != "dm":
+            continue
+        if participant.is_hidden and out.relationship_status == "accepted":
             continue
 
         if out.relationship_direction == "incoming" and out.relationship_status == "pending":
@@ -1845,18 +1856,72 @@ async def open_dm(
 
     res = await db.execute(
         select(Channel)
-        .join(DMParticipant, DMParticipant.channel_id == Channel.id)
-        .where(DMParticipant.user_id == user.id, Channel.type == "dm")
-    )
-    for ch in res.scalars().all():
-        other = await db.execute(
-            select(DMParticipant).where(
-                DMParticipant.channel_id == ch.id,
-                DMParticipant.user_id == body.recipient_id,
-            )
+        .join(DMRequest, DMRequest.channel_id == Channel.id)
+        .where(
+            Channel.type == "dm",
+            (
+                ((DMRequest.requester_id == user.id) & (DMRequest.recipient_id == body.recipient_id))
+                | ((DMRequest.requester_id == body.recipient_id) & (DMRequest.recipient_id == user.id))
+            ),
         )
-        if other.scalar_one_or_none():
-            return await _build_dm_channel_out(db, ch, user.id)
+        .order_by(Channel.created_at.asc())
+    )
+    existing = res.scalars().first()
+    if existing:
+        created_user_participant = False
+        user_participant = await db.get(DMParticipant, (existing.id, user.id))
+        if not user_participant:
+            user_participant = DMParticipant(channel_id=existing.id, user_id=user.id)
+            db.add(user_participant)
+            created_user_participant = True
+
+        created_recipient_participant = False
+        recipient_participant = await db.get(DMParticipant, (existing.id, body.recipient_id))
+        if not recipient_participant:
+            recipient_participant = DMParticipant(channel_id=existing.id, user_id=body.recipient_id)
+            db.add(recipient_participant)
+            created_recipient_participant = True
+
+        req = await _get_dm_request(db, existing.id)
+        notify_recipient = False
+        if req:
+            should_re_request = req.status == "accepted" and (
+                user_participant.is_hidden
+                or recipient_participant.is_hidden
+                or created_user_participant
+                or created_recipient_participant
+            )
+            if should_re_request:
+                req.requester_id = user.id
+                req.recipient_id = body.recipient_id
+                req.status = "pending"
+                req.updated_at = datetime.utcnow()
+                notify_recipient = True
+            elif req.status in ("pending", "rejected") and req.requester_id != user.id:
+                req.requester_id = user.id
+                req.recipient_id = body.recipient_id
+                req.status = "pending"
+                req.updated_at = datetime.utcnow()
+                notify_recipient = True
+            elif req.status == "rejected" and req.requester_id == user.id:
+                req.status = "pending"
+                req.updated_at = datetime.utcnow()
+                notify_recipient = True
+
+        user_participant.is_hidden = False
+        await db.commit()
+        await db.refresh(existing)
+
+        if notify_recipient:
+            await gw.to_user(
+                body.recipient_id,
+                {
+                    "op": "DM_REQUEST_CREATE",
+                    "data": {"channel_id": existing.id, "from_user_id": user.id},
+                },
+            )
+
+        return await _build_dm_channel_out(db, existing, user.id)
 
     ch = Channel(id=chn_id(), name="dm", type="dm")
     db.add(ch)
@@ -1969,6 +2034,17 @@ async def accept_dm_request(
 
     req.status = "accepted"
     req.updated_at = datetime.utcnow()
+    requester_participant = await db.get(DMParticipant, (channel_id, req.requester_id))
+    if not requester_participant:
+        requester_participant = DMParticipant(channel_id=channel_id, user_id=req.requester_id)
+        db.add(requester_participant)
+    requester_participant.is_hidden = False
+
+    recipient_participant = await db.get(DMParticipant, (channel_id, req.recipient_id))
+    if not recipient_participant:
+        recipient_participant = DMParticipant(channel_id=channel_id, user_id=req.recipient_id)
+        db.add(recipient_participant)
+    recipient_participant.is_hidden = False
     await db.commit()
 
     await gw.to_user(
@@ -2022,34 +2098,25 @@ async def close_dm(
 
     p = await _get_or_404(db, DMParticipant, (channel_id, user.id), "DM not found")
     req = await _get_dm_request(db, channel_id)
-    if req and req.status != "accepted":
-        other_user_id = req.recipient_id if req.requester_id == user.id else req.requester_id
-        await _delete_channel_related(db, channel_id)
-        await db.commit()
-        await gw.to_user(
-            other_user_id,
-            {
-                "op": "DM_REQUEST_UPDATE",
-                "data": {"channel_id": channel_id, "status": "deleted"},
-            },
-        )
-        return None
+    p.is_hidden = True
 
-    notice = await _create_system_notice(
-        db, channel_id, user.id, "close", f"{user.username} closed the DM"
-    )
-    await db.delete(p)
+    notice = None
+    if req and req.status == "accepted":
+        other_res = await db.execute(
+            select(DMParticipant).where(
+                DMParticipant.channel_id == channel_id,
+                DMParticipant.user_id != user.id,
+            )
+        )
+        other_participant = other_res.scalar_one_or_none()
+        if other_participant:
+            notice = await _create_system_notice(
+                db, channel_id, user.id, "close", f"{user.username} left the DM"
+            )
+
     await db.commit()
 
-    res = await db.execute(
-        select(func.count()).select_from(DMParticipant).where(DMParticipant.channel_id == channel_id)
-    )
-    remaining = res.scalar_one()
-
-    if remaining == 0:
-        await _delete_channel_related(db, channel_id)
-        await db.commit()
-    else:
+    if notice:
         out = await _build_msg(db, notice, user.id)
         await gw.to_channel(
             db, ch, {"op": "MESSAGE_CREATE", "data": out.model_dump(mode="json")}

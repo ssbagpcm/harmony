@@ -121,6 +121,7 @@
     //  Pins / mentions / search
     // ═══════════════════════════════════════════════════
     function togglePins() {
+      if (!S.activeCh || isHomeView()) return;
       S.pinsOpen = !S.pinsOpen;
       if (S.pinsOpen && S.mentionsOpen) closeMentions();
       document.getElementById('pins-panel').style.display = S.pinsOpen ? 'block' : 'none';
@@ -161,6 +162,7 @@
     }
 
     function toggleMentions() {
+      if (!S.activeCh || isHomeView()) return;
       S.mentionsOpen = !S.mentionsOpen;
       if (S.mentionsOpen && S.pinsOpen) closePins();
       document.getElementById('mentions-panel').style.display = S.mentionsOpen ? 'block' : 'none';
@@ -194,14 +196,116 @@
   `).join('');
     }
 
+    function searchModalMeta() {
+      if (S.activeCh?.type === 'friends_home') {
+        return { title: 'Search Friends', placeholder: 'Search friends, requests, pending...' };
+      }
+      if (S.activeCh?.type === 'groups_home') {
+        return { title: 'Search Groups', placeholder: 'Search groups...' };
+      }
+      if (S.activeCh?.type === 'docs_home') {
+        return { title: 'Search Tutorial', placeholder: 'Search the tutorial...' };
+      }
+      return { title: 'Search Messages', placeholder: 'Search...' };
+    }
+
+    function renderSearchResults(results, countLabel, onSelect) {
+      const out = document.getElementById('s-results');
+      if (!results.length) {
+        out.innerHTML = '<div class="empty"><p>No results.</p></div>';
+        return;
+      }
+      out.innerHTML = results.map((item, index) => `
+        <div style="padding:10px;background:var(--bg-card);border-radius:var(--radius-sm);margin-bottom:6px;cursor:pointer;display:flex;align-items:flex-start;gap:10px" onclick="${onSelect(item, index)}">
+          <i data-lucide="${item.icon}" style="width:16px;height:16px;color:var(--t3);margin-top:2px;flex-shrink:0"></i>
+          <div style="min-width:0;flex:1">
+            <div style="font-size:13px;color:var(--t1);font-weight:700">${esc(item.title)}</div>
+            <div style="font-size:12px;color:var(--t3);margin-top:2px">${esc(item.subtitle)}</div>
+          </div>
+        </div>
+      `).join('') + `<div style="font-size:12px;color:var(--t4);padding:6px">${countLabel}</div>`;
+      lucide.createIcons();
+    }
+
+    function searchFriendsHome(needle) {
+      const sections = [
+        { icon: 'heart', label: 'Friend', items: S.dmOverview.friends || [] },
+        { icon: 'inbox', label: 'Request', items: S.dmOverview.requests || [] },
+        { icon: 'clock-3', label: 'Pending', items: S.dmOverview.pending || [] },
+      ];
+      const matches = [];
+
+      sections.forEach(section => {
+        section.items.forEach(entry => {
+          const name = entry._name || entry.other_user?.username || entry.name || 'Unknown';
+          const sectionLabel = entry.relationship_direction === 'incoming' && entry.relationship_status === 'rejected'
+            ? 'Blocked'
+            : section.label;
+          const subtitle = `${sectionLabel} · ${formatStatusLabel(entry.other_user?.status || S.presence[entry._otherId] || entry.relationship_status || 'offline')}`;
+          const haystack = [name, subtitle, entry.id, entry._otherId, entry.other_user?.username]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+          if (haystack.includes(needle)) {
+            matches.push({
+              id: entry.id,
+              title: name,
+              subtitle,
+              icon: section.icon,
+            });
+          }
+        });
+      });
+
+      return matches;
+    }
+
+    function searchGroupsHome(needle) {
+      return (S.dmOverview.groups || []).reduce((matches, entry) => {
+        const name = entry.name || entry._name || 'Group';
+        const subtitle = `Group · ${entry.participant_count || 0} member${(entry.participant_count || 0) > 1 ? 's' : ''}`;
+        const haystack = [name, subtitle, entry.id].join(' ').toLowerCase();
+        if (haystack.includes(needle)) {
+          matches.push({
+            id: entry.id,
+            title: name,
+            subtitle,
+            icon: 'users',
+          });
+        }
+        return matches;
+      }, []);
+    }
+
+    function searchDocsHome(needle) {
+      const matches = [];
+      String(S.docsMarkdown || '').split('\n').forEach((line, index) => {
+        const text = line.trim();
+        if (!text) return;
+        if (text.toLowerCase().includes(needle)) {
+          matches.push({
+            title: text.replace(/^#+\s*/, '').slice(0, 120),
+            subtitle: `Tutorial line ${index + 1}`,
+            icon: 'book-open',
+          });
+        }
+      });
+      return matches.slice(0, 30);
+    }
+
     function toggleSearch() {
       if (!S.activeCh) {
         toast('Select a channel first', 'err');
         return;
       }
+      const meta = searchModalMeta();
       S.searchOpen = true;
+      document.querySelector('#m-search .modal-title').textContent = meta.title;
+      document.getElementById('sq').placeholder = meta.placeholder;
+      document.getElementById('s-results').innerHTML = '';
       document.getElementById('btn-search').classList.add('active');
       openModal('m-search');
+      requestAnimationFrame(() => document.getElementById('sq')?.focus());
     }
     function closeSearchModal() {
       S.searchOpen = false;
@@ -217,6 +321,27 @@
       lucide.createIcons();
 
       try {
+        const needle = q.toLowerCase();
+
+        if (S.activeCh.type === 'friends_home') {
+          const matches = searchFriendsHome(needle);
+          renderSearchResults(matches, `${matches.length} result(s)`, item => `pickChById('${item.id}');closeSearchModal()`);
+          return;
+        }
+
+        if (S.activeCh.type === 'groups_home') {
+          const matches = searchGroupsHome(needle);
+          renderSearchResults(matches, `${matches.length} result(s)`, item => `pickChById('${item.id}');closeSearchModal()`);
+          return;
+        }
+
+        if (S.activeCh.type === 'docs_home') {
+          if (!S.docsLoaded && !S.docsLoading) await loadProjectDocs();
+          const matches = searchDocsHome(needle);
+          renderSearchResults(matches, `${matches.length} result(s)`, () => `closeSearchModal()`);
+          return;
+        }
+
         if (S.activeSrv && S.activeCh.server_id) {
           const r = await GET(`/servers/${S.activeSrv.id}/search?q=${encodeURIComponent(q)}&limit=30`);
           if (!r.messages.length) {
@@ -236,7 +361,6 @@
 
         if (!S.messages[S.activeCh.id]) await fetchMsgs(S.activeCh.id, true);
         const source = S.messages[S.activeCh.id] || [];
-        const needle = q.toLowerCase();
         const matches = source.filter(m =>
           (m.content || '').toLowerCase().includes(needle) ||
           (m.author?.username || '').toLowerCase().includes(needle) ||

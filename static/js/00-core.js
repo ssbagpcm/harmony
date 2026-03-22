@@ -94,6 +94,7 @@
     let _confirmCb = null;
     let _ctxItems = [];
     let _modalZ = 1000;
+    let _uiEnhancerObserver = null;
     let _viewer = {
       open: false,
       scale: 1,
@@ -200,7 +201,69 @@
       return { id: 'groups-home', type: 'groups_home', name: 'Groups', topic: 'Create and manage your group chats' };
     }
     function docsHomeChannel() {
-      return { id: 'docs-home', type: 'docs_home', name: 'Project Docs', topic: 'Integrated project documentation with examples and implementation notes' };
+      return { id: 'docs-home', type: 'docs_home', name: 'Project Tutorial', topic: 'Integrated project tutorial with examples and implementation notes' };
+    }
+    function isHomeView(ch = S.activeCh) {
+      return ['friends_home', 'groups_home', 'docs_home'].includes(ch?.type);
+    }
+    function disableBrowserSuggestions(root = document) {
+      root.querySelectorAll('form').forEach(el => {
+        el.setAttribute('autocomplete', 'off');
+        el.setAttribute('data-form-type', 'other');
+      });
+      root.querySelectorAll('input, textarea').forEach(el => {
+        if (el.type === 'file' || el.type === 'color') return;
+        el.setAttribute('autocomplete', 'off');
+        el.setAttribute('autocapitalize', 'off');
+        el.setAttribute('autocorrect', 'off');
+        el.setAttribute('spellcheck', 'false');
+        el.setAttribute('aria-autocomplete', 'none');
+        el.setAttribute('data-lpignore', 'true');
+        el.setAttribute('data-1p-ignore', 'true');
+      });
+    }
+    function enableCustomTooltips(root = document) {
+      const elements = [];
+      if (root?.nodeType === 1 && root.matches?.('[title], [data-tip-text]')) {
+        elements.push(root);
+      }
+      if (root?.querySelectorAll) {
+        elements.push(...root.querySelectorAll('[title], [data-tip-text]'));
+      }
+      elements.forEach(el => {
+        const text = el.getAttribute('title') || el.dataset.tipText;
+        if (!text) return;
+        el.dataset.tipText = text;
+        if (el.hasAttribute('title')) el.removeAttribute('title');
+        if (el.dataset.tipBound === '1') return;
+        el.dataset.tipBound = '1';
+        el.addEventListener('mouseenter', event => tip(event, el.dataset.tipText));
+        el.addEventListener('mouseleave', () => hideTip());
+      });
+    }
+    function applyUIEnhancements(root = document) {
+      disableBrowserSuggestions(root);
+      enableCustomTooltips(root);
+    }
+    function observeUIEnhancements() {
+      if (_uiEnhancerObserver || typeof MutationObserver === 'undefined' || !document.body) return;
+      _uiEnhancerObserver = new MutationObserver(mutations => {
+        mutations.forEach(mutation => {
+          mutation.addedNodes.forEach(node => {
+            if (node.nodeType === 1) applyUIEnhancements(node);
+          });
+        });
+      });
+      _uiEnhancerObserver.observe(document.body, { childList: true, subtree: true });
+    }
+    applyUIEnhancements();
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        applyUIEnhancements();
+        observeUIEnhancements();
+      }, { once: true });
+    } else {
+      observeUIEnhancements();
     }
     function allDMEntries() {
       return [...S.dms, ...(S.dmOverview.pending || []), ...S.dmRequests];
@@ -316,6 +379,15 @@
       if (S.activeCh.type === 'category') return false;
       if (!S.activeCh.server_id) return true;
       return hasBits(currentChannelPermBits(), PERM.SEND_MESSAGES);
+    }
+    function formatStatusLabel(status = 'offline') {
+      return {
+        online: 'Online',
+        idle: 'Idle',
+        dnd: 'Do Not Disturb',
+        invisible: 'Invisible',
+        offline: 'Offline',
+      }[status] || status;
     }
     function isOwner(server = S.activeSrv) {
       return !!server && server.owner_id === S.me?.id;

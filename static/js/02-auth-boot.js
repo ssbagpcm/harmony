@@ -55,6 +55,7 @@
       S.channelServerMap = {};
       S.replyTo = null;
       S.editingId = null;
+      if (typeof clearEditUI === 'function') clearEditUI();
       S.loading = {};
       S.pendingNew = 0;
       S.friendsMenuTab = 'requests';

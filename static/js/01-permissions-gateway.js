@@ -83,8 +83,7 @@
           break;
 
         case 'PRESENCE_UPDATE':
-          S.presence[d.user_id] = d.status || 'offline';
-          refreshPresence(d.user_id);
+          handleUserUpdate({ id: d.user_id, status: d.status || 'offline' });
           break;
 
         case 'TYPING_START':

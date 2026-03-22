@@ -26,7 +26,7 @@
         <div class="auth-tab" id="tab-up" onclick="switchTab('up')">Create Account</div>
       </div>
 
-      <form id="pane-in" onsubmit="event.preventDefault(); doLogin()">
+      <form id="pane-in" onsubmit="event.preventDefault(); doLogin()" autocomplete="off">
         <div class="auth-err" id="err-in"></div>
         <div class="fg">
           <label class="fl">Username</label>
@@ -39,15 +39,15 @@
         <button class="btn btn-primary" type="submit" style="width:100%;padding:10px">Sign In</button>
       </form>
 
-      <form id="pane-up" style="display:none" onsubmit="event.preventDefault(); doRegister()">
+      <form id="pane-up" style="display:none" onsubmit="event.preventDefault(); doRegister()" autocomplete="off">
         <div class="auth-err" id="err-up"></div>
         <div class="fg">
           <label class="fl">Username</label>
-          <input class="fi" id="up-username" type="text" maxlength="32" placeholder="cooluser">
+          <input class="fi" id="up-username" type="text" maxlength="32" placeholder="cooluser" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         </div>
         <div class="fg">
           <label class="fl">Password</label>
-          <input class="fi" id="up-pass" type="password" placeholder="At least 6 characters">
+          <input class="fi" id="up-pass" type="password" placeholder="At least 6 characters" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         </div>
         <button class="btn btn-primary" type="submit" style="width:100%;padding:10px">Create Account</button>
       </form>
@@ -83,7 +83,7 @@
       <div class="rail-spacer"></div>
 
       <div class="rail-icon" id="rail-project-docs" onclick="openProjectDocsLink()"
-        onmouseenter="tip(event,'Project Docs')" onmouseleave="hideTip()">
+        onmouseenter="tip(event,'Project Tutorial')" onmouseleave="hideTip()">
         <i data-lucide="book-open" style="width:20px;height:20px"></i>
       </div>
     </nav>
@@ -160,13 +160,20 @@
             <i data-lucide="x" style="width:13px;height:13px"></i>
           </div>
         </div>
+        <div id="edit-ui" class="reply-bar-ui edit-bar-ui" style="display:none">
+          <i data-lucide="pencil" style="width:14px;height:14px;color:var(--brand)"></i>
+          <div class="reply-bar-txt" id="edit-ui-txt"></div>
+          <div class="up-btn" onclick="cancelEdit()" style="width:24px;height:24px">
+            <i data-lucide="x" style="width:13px;height:13px"></i>
+          </div>
+        </div>
 
         <div class="input-box">
           <div class="input-btn" id="btn-attach" onclick="document.getElementById('file-in').click()" title="Attach">
             <i data-lucide="plus-circle" style="width:20px;height:20px"></i>
           </div>
           <input type="file" id="file-in" style="display:none" onchange="uploadFile(this)">
-          <textarea id="msg-input" rows="1" placeholder="Select a channel" onkeydown="inputKey(event)"
+          <textarea id="msg-input" rows="1" placeholder="Select a channel" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" onkeydown="inputKey(event)"
             oninput="autoResize(this)"></textarea>
           <div class="input-btn" id="btn-emoji" onclick="openEmojiPicker()" title="Emoji">
             <i data-lucide="smile" style="width:20px;height:20px"></i>
@@ -230,6 +237,8 @@
       <div class="sp-dot invisible"></div>Invisible
     </div>
     <div class="ctx-sep"></div>
+    <div class="sp-item" onclick="closeAllPopups();showUserProfile(S.me.id)"><i data-lucide="user"
+        style="width:14px;height:14px"></i>My Profile</div>
     <div class="sp-item" onclick="closeAllPopups();openSettings()"><i data-lucide="settings"
         style="width:14px;height:14px"></i>Settings</div>
     <div class="sp-item" style="color:var(--danger)" onclick="doLogout()"><i data-lucide="log-out"
@@ -269,7 +278,7 @@
       <div class="modal-body">
         <div class="fg">
           <label class="fl">Server Name</label>
-          <input class="fi" id="cs-name" type="text" maxlength="100" placeholder="My Awesome Server">
+          <input class="fi" id="cs-name" type="text" maxlength="100" placeholder="My Awesome Server" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         </div>
       </div>
       <div class="modal-foot">
@@ -292,7 +301,7 @@
       <div class="modal-body">
         <div class="fg">
           <label class="fl">Channel Type</label>
-          <select class="fi" id="cc-type">
+          <select class="fi" id="cc-type" onchange="syncChannelEditorType()">
             <option value="text">Text</option>
             <option value="voice">Voice</option>
             <option value="category">Category</option>
@@ -300,17 +309,17 @@
         </div>
         <div class="fg">
           <label class="fl">Name</label>
-          <input class="fi" id="cc-name" type="text" maxlength="100" placeholder="new-channel">
+          <input class="fi" id="cc-name" type="text" maxlength="100" placeholder="new-channel" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         </div>
-        <div class="fg">
+        <div class="fg" id="cc-topic-group">
           <label class="fl">Topic</label>
-          <input class="fi" id="cc-topic" type="text" maxlength="1024" placeholder="What's this channel about?">
+          <input class="fi" id="cc-topic" type="text" maxlength="1024" placeholder="What's this channel about?" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         </div>
-        <div class="fg">
+        <div class="fg" id="cc-parent-group">
           <label class="fl">Parent Category</label>
           <select class="fi" id="cc-parent"></select>
         </div>
-        <div class="fg">
+        <div class="fg" id="cc-nsfw-group">
           <label class="fl">NSFW</label>
           <select class="fi" id="cc-nsfw">
             <option value="false">No</option>
@@ -360,13 +369,15 @@
         </div>
       </div>
       <div class="modal-body">
-        <div class="fg"><label class="fl">Username</label><input class="fi" id="set-user" type="text" maxlength="32">
+        <div class="fg"><label class="fl">Username</label><input class="fi" id="set-user" type="text" maxlength="32" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         </div>
-        <div class="fg"><label class="fl">Bio</label><input class="fi" id="set-bio" type="text" maxlength="256"
+        <div class="fg"><label class="fl">Bio</label><input class="fi" id="set-bio" type="text" maxlength="256" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
             placeholder="Tell us about yourself"></div>
-        <div class="fg"><label class="fl">Avatar URL</label><input class="fi" id="set-av" type="url"
+        <div class="fg"><label class="fl">Pronouns</label><input class="fi" id="set-pronouns" type="text" maxlength="20" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+            placeholder="she/her"></div>
+        <div class="fg"><label class="fl">Avatar URL</label><input class="fi" id="set-av" type="url" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
             placeholder="https://..."></div>
-        <div class="fg"><label class="fl">Banner URL</label><input class="fi" id="set-bn" type="url"
+        <div class="fg"><label class="fl">Banner URL</label><input class="fi" id="set-bn" type="url" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
             placeholder="https://..."></div>
       </div>
       <div class="modal-foot">
@@ -417,7 +428,7 @@
             style="width:16px;height:16px"></i></div>
       </div>
       <div class="modal-body">
-        <div class="fg"><label class="fl">Role Name</label><input class="fi" id="role-name" type="text" maxlength="100"
+        <div class="fg"><label class="fl">Role Name</label><input class="fi" id="role-name" type="text" maxlength="100" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
             placeholder="Moderator"></div>
         <div class="fg"><label class="fl">Color</label><input class="fi" id="role-color" type="color" value="#5865f2"
             style="height:42px;padding:4px"></div>
@@ -469,7 +480,7 @@
       </div>
       <div class="modal-body">
         <div id="prompt-message" style="margin-bottom:16px;color:var(--t2)"></div>
-        <input class="fi" id="prompt-input" type="text" style="margin-bottom:16px">
+        <input class="fi" id="prompt-input" type="text" style="margin-bottom:16px" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button class="btn btn-ghost" onclick="closePrompt()">Cancel</button>
           <button class="btn btn-primary" onclick="confirmPrompt()">Confirm</button>
@@ -508,7 +519,7 @@
       </div>
       <div class="modal-body">
         <div style="display:flex;gap:8px;margin-bottom:14px">
-          <input class="fi" id="sq" type="text" placeholder="Search..." style="flex:1"
+          <input class="fi" id="sq" type="text" placeholder="Search..." style="flex:1" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
             onkeydown="if(event.key==='Enter')doSearch()">
           <button class="btn btn-primary" onclick="doSearch()">Search</button>
         </div>
@@ -528,7 +539,7 @@
         </div>
       </div>
       <div class="modal-body">
-        <div class="fg"><label class="fl">User ID</label><input class="fi" id="dm-uid" type="text"
+        <div class="fg"><label class="fl">User ID</label><input class="fi" id="dm-uid" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
             placeholder="usr_..."></div>
       </div>
       <div class="modal-foot">
@@ -549,7 +560,7 @@
       <div class="modal-body">
         <div class="fg">
           <label class="fl">Group Name</label>
-          <input class="fi" id="group-name" type="text" placeholder="My group">
+          <input class="fi" id="group-name" type="text" placeholder="My group" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         </div>
         <div class="small-muted" style="margin-bottom:10px">Select friends to add.</div>
         <div id="group-friends-list" style="max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:8px"></div>

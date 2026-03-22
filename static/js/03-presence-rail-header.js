@@ -35,6 +35,14 @@
         if (c._otherId === d.id) {
           if (d.username) c._name = d.username;
           if (d.avatar_url !== undefined) c._otherAv = d.avatar_url;
+          if (c.other_user) {
+            if (d.username) c.other_user.username = d.username;
+            if (d.avatar_url !== undefined) c.other_user.avatar_url = d.avatar_url;
+            if (d.bio !== undefined) c.other_user.bio = d.bio;
+            if (d.pronouns !== undefined) c.other_user.pronouns = d.pronouns;
+            if (d.banner_url !== undefined) c.other_user.banner_url = d.banner_url;
+            if (d.status) c.other_user.status = d.status;
+          }
           const stored = getStoredDMInfo(c.id) || {};
           storeDMInfo(c.id, {
             ...stored,
@@ -53,6 +61,7 @@
             if (d.username) m.user.username = d.username;
             if (d.avatar_url !== undefined) m.user.avatar_url = d.avatar_url;
             if (d.bio !== undefined) m.user.bio = d.bio;
+            if (d.pronouns !== undefined) m.user.pronouns = d.pronouns;
             if (d.banner_url !== undefined) m.user.banner_url = d.banner_url;
             if (d.status) m.user.status = d.status;
           }
@@ -65,6 +74,9 @@
           if (m.author_id === d.id && m.author) {
             if (d.username) m.author.username = d.username;
             if (d.avatar_url !== undefined) m.author.avatar_url = d.avatar_url;
+            if (d.bio !== undefined) m.author.bio = d.bio;
+            if (d.pronouns !== undefined) m.author.pronouns = d.pronouns;
+            if (d.banner_url !== undefined) m.author.banner_url = d.banner_url;
             if (d.status) m.author.status = d.status;
           }
           if (m.reply_to && m.reply_to.author_username && S.me?.id === d.id && d.username) {
@@ -147,6 +159,7 @@
       S.activeCh = null;
       S.replyTo = null;
       S.editingId = null;
+      if (typeof clearEditUI === 'function') clearEditUI();
       clearReply();
 
       renderRail();
@@ -333,15 +346,22 @@
       const ch = S.activeCh;
       const icons = { dm: 'message-square', group: 'users', friends_home: 'heart', groups_home: 'users', docs_home: 'book-open', note: 'bookmark', voice: 'volume-2', text: 'hash', category: 'folder' };
       const iconEl = document.getElementById('ch-hdr-icon');
+      const isHome = isHomeView(ch);
       iconEl.setAttribute('data-lucide', icons[ch?.type] || 'hash');
       document.getElementById('ch-hdr-name').textContent = ch ? (ch._name || ch.name || '—') : '—';
       document.getElementById('ch-hdr-topic').textContent = ch?.topic || '';
       document.getElementById('topic-sep').style.display = ch?.topic ? '' : 'none';
       document.getElementById('msg-input').placeholder = ch
-        ? ['friends_home', 'groups_home', 'docs_home'].includes(ch.type)
-          ? (ch.type === 'docs_home' ? 'Read-only documentation view' : 'Open a friend or group to chat')
+        ? isHome
+          ? (ch.type === 'docs_home' ? 'Read-only tutorial view' : 'Open a friend or group to chat')
           : `Message ${['dm', 'note', 'group'].includes(ch.type) ? '' : '#'}${ch._name || ch.name}`
         : 'Select a channel';
+      document.getElementById('btn-pins').style.display = isHome ? 'none' : '';
+      document.getElementById('btn-mentions').style.display = isHome ? 'none' : '';
+      if (isHome) {
+        closePins();
+        closeMentions();
+      }
       updateSrvSettingsBtn();
       updateMLBtn();
       updateShareBtn();
@@ -354,8 +374,13 @@
       const send = document.getElementById('btn-send');
       const attach = document.getElementById('btn-attach');
       const emoji = document.getElementById('btn-emoji');
+      const inputWrap = document.getElementById('input-wrap');
+      const typingBar = document.getElementById('typing-bar');
+      const isHome = isHomeView();
 
-      const enabled = !!S.activeCh && !['friends_home', 'groups_home', 'docs_home'].includes(S.activeCh.type) && canSendHere();
+      const enabled = !!S.activeCh && !isHome && canSendHere();
+      inputWrap.style.display = isHome ? 'none' : '';
+      typingBar.style.display = isHome ? 'none' : '';
       input.disabled = !enabled;
       send.classList.toggle('disabled', !enabled);
       attach.classList.toggle('disabled', !enabled);
@@ -429,6 +454,7 @@
       S.activeCh = ch;
       S.replyTo = null;
       S.editingId = null;
+      if (typeof clearEditUI === 'function') clearEditUI();
       clearReply();
       clearUnread(ch.id);
 
@@ -442,8 +468,9 @@
       await ensureChannelPerms(ch);
       updateComposerState();
 
-      if (!S.messages[ch.id]) {
-        await fetchMsgs(ch.id);
+      const shouldRefetchDirectHistory = ['dm', 'group', 'note'].includes(ch.type);
+      if (!S.messages[ch.id] || shouldRefetchDirectHistory) {
+        await fetchMsgs(ch.id, shouldRefetchDirectHistory);
       } else {
         renderMsgs();
         requestAnimationFrame(() => scrollBottom(true));

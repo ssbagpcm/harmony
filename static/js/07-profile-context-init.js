@@ -179,6 +179,7 @@
       try {
         const user = await GET(`/users/${uid}`);
         const status = S.presence[uid] || user.status || 'offline';
+        const statusLabel = formatStatusLabel(status);
         const isMe = uid === S.me?.id;
         const bannerStyle = user.banner_url
           ? `background:url(${escA(user.banner_url)}) center/cover;height:90px`
@@ -195,7 +196,8 @@
       </div>
       <div style="padding:42px 16px 16px">
         <div style="font-size:18px;font-weight:700">${esc(user.username)}<span style="font-size:14px;color:var(--t3);font-weight:400">#${user.discriminator || '0000'}</span></div>
-        <div class="small-muted">${esc(status)}</div>
+        <div class="small-muted">${esc(statusLabel)}</div>
+        ${user.pronouns ? `<div class="small-muted" style="margin-top:4px">${esc(user.pronouns)}</div>` : ''}
         ${user.bio ? `<div style="margin-top:12px;color:var(--t2)">${esc(user.bio)}</div>` : ''}
         <div style="display:flex;gap:8px;margin-top:16px">
           ${!isMe ? `<button class="btn btn-primary" style="flex:1" onclick="sendDMTo('${uid}')">Message</button>` : ''}
@@ -218,9 +220,10 @@
         if (!S.inDMs) showDMs();
         else renderDMList();
 
-        const local = findChannel(ch.id);
-        if (local?.can_open !== false) {
-          await pickCh(local || ch);
+        const local = findChannel(ch.id) || ch;
+        const canAutoOpen = ['group', 'note'].includes(local?.type) || (local?.relationship_status === 'accepted' && local?.can_open !== false);
+        if (canAutoOpen) {
+          await pickCh(local);
         } else {
           toast('DM request sent', 'ok');
         }
@@ -263,12 +266,26 @@
     // ═══════════════════════════════════════════════════
     //  Context menus
     // ═══════════════════════════════════════════════════
+    function compactCtxItems(items = []) {
+      const compact = [];
+      items.forEach(item => {
+        if (!item) {
+          if (!compact.length || !compact[compact.length - 1]) return;
+          compact.push(null);
+          return;
+        }
+        compact.push(item);
+      });
+      while (compact.length && !compact[compact.length - 1]) compact.pop();
+      return compact;
+    }
+
     function ctxMenu(event, items) {
       event.preventDefault();
       event.stopPropagation();
-      _ctxItems = items;
+      _ctxItems = compactCtxItems(items);
       const m = document.getElementById('ctx-menu');
-      m.innerHTML = items.map((item, i) => {
+      m.innerHTML = _ctxItems.map((item, i) => {
         if (!item) return '<div class="ctx-sep"></div>';
         return `<div class="ctx-item${item.cls ? ' ' + item.cls : ''}" onclick="ctxRun(${i})">
       <i data-lucide="${item.icon}" style="width:14px;height:14px;flex-shrink:0"></i>
@@ -316,13 +333,14 @@
         return;
       }
       const editLabel = ch.type === 'category' ? 'Edit Category' : 'Edit Channel';
-      ctxMenu(event, [
+      const items = [
         { icon: 'copy', label: 'Copy Channel ID', fn: () => navigator.clipboard.writeText(ch.id).then(() => toast('Copied', 'ok')) },
-        { icon: 'pin', label: 'Pinned Messages', fn: () => { pickCh(ch).then(() => setTimeout(openPins, 100)); } },
+        ch.type === 'category' ? null : { icon: 'pin', label: 'Pinned Messages', fn: () => { pickCh(ch).then(() => setTimeout(openPins, 100)); } },
         canManageChannels() && ch.server_id ? null : null,
         canManageChannels() && ch.server_id ? { icon: 'pencil', label: editLabel, fn: () => openEditChannel(ch.id) } : null,
-        canManageChannels() && ch.server_id ? { icon: 'trash-2', label: 'Delete Channel', cls: 'danger', fn: () => deleteCh(ch.id) } : null
-      ].filter((x, idx, arr) => x !== null || (arr[idx + 1] || arr[idx - 1])));
+        canManageChannels() && ch.server_id ? { icon: 'trash-2', label: `Delete ${channelEntityLabel(ch)}`, cls: 'danger', fn: () => deleteCh(ch.id) } : null
+      ];
+      ctxMenu(event, items);
     }
 
     async function renameGroup(channelId, currentName) {
@@ -352,7 +370,7 @@
         notMe && canManageRoles() ? { icon: 'shield', label: 'Manage Roles', fn: () => manageRoles(uid) } : null,
         notMe && canKickMembers() ? { icon: 'user-minus', label: 'Kick', cls: 'danger', fn: () => kickUser(uid) } : null,
         notMe && canBanMembers() ? { icon: 'ban', label: 'Ban', cls: 'danger', fn: () => banUser(uid) } : null,
-      ].filter((x, idx, arr) => x !== null || (arr[idx + 1] || arr[idx - 1])));
+      ]);
     }
 
     function msgCtx(event, msgId) {
@@ -373,6 +391,7 @@
       if (!el) return;
       el.style.zIndex = ++_modalZ;
       el.style.display = 'flex';
+      applyUIEnhancements(el);
       lucide.createIcons();
     }
     function closeModal(id) {
@@ -463,8 +482,20 @@
       const t = document.getElementById('tooltip');
       t.textContent = text;
       t.style.display = 'block';
-      t.style.left = (event.clientX + 16) + 'px';
-      t.style.top = (event.clientY - 4) + 'px';
+      const pad = 12;
+      let left = event.clientX + 16;
+      let top = event.clientY - 4;
+      const rect = t.getBoundingClientRect();
+      if (left + rect.width + pad > window.innerWidth) {
+        left = Math.max(pad, window.innerWidth - rect.width - pad);
+      }
+      if (top + rect.height + pad > window.innerHeight) {
+        top = Math.max(pad, event.clientY - rect.height - 12);
+      }
+      if (top < pad) top = pad;
+      if (left < pad) left = pad;
+      t.style.left = left + 'px';
+      t.style.top = top + 'px';
     }
     function hideTip() {
       document.getElementById('tooltip').style.display = 'none';

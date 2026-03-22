@@ -184,6 +184,7 @@ class User(Base):
     avatar_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     banner_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     bio: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    pronouns: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     status: Mapped[str] = mapped_column(String, default="offline")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -259,6 +260,7 @@ class DMParticipant(Base):
     user_id: Mapped[str] = mapped_column(
         String, ForeignKey("users.id"), primary_key=True
     )
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class DMRequest(Base):
@@ -411,6 +413,7 @@ class UserOut(_ORM):
     avatar_url: Optional[str]
     banner_url: Optional[str]
     bio: Optional[str]
+    pronouns: Optional[str]
     status: str
     server_nickname: Optional[str] = None
     created_at: datetime
@@ -419,6 +422,7 @@ class UserOut(_ORM):
 class UpdateMeIn(BaseModel):
     username: Optional[str] = Field(None, min_length=2, max_length=32)
     bio: Optional[str] = Field(None, max_length=256)
+    pronouns: Optional[str] = Field(None, max_length=20)
     avatar_url: Optional[str] = None
     banner_url: Optional[str] = None
 
@@ -870,6 +874,7 @@ async def _build_dm_channel_out(
                 "avatar_url": other_user.avatar_url,
                 "banner_url": other_user.banner_url,
                 "bio": other_user.bio,
+                "pronouns": other_user.pronouns,
                 "status": _public_status(other_user.status),
                 "created_at": other_user.created_at,
                 "server_nickname": None,

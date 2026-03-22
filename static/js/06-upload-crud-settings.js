@@ -118,17 +118,34 @@
       ).join('');
     }
 
-    function openCreateCh(parentId = null) {
+    function isCategoryEntity(chOrType) {
+      return (typeof chOrType === 'string' ? chOrType : chOrType?.type) === 'category';
+    }
+
+    function channelEntityLabel(chOrType) {
+      return isCategoryEntity(chOrType) ? 'Category' : 'Channel';
+    }
+
+    function syncChannelEditorType() {
+      const type = document.getElementById('cc-type').value;
+      const isCategory = isCategoryEntity(type);
+      document.getElementById('cc-topic-group').style.display = isCategory ? 'none' : '';
+      document.getElementById('cc-parent-group').style.display = isCategory ? 'none' : '';
+      document.getElementById('cc-nsfw-group').style.display = isCategory ? 'none' : '';
+    }
+
+    function openCreateCh(parentId = null, type = 'text') {
       S.channelEditorMode = 'create';
       S.channelEditorTarget = { parent_id: parentId };
-      document.getElementById('ch-editor-title').textContent = 'Create Channel';
+      document.getElementById('ch-editor-title').textContent = `Create ${channelEntityLabel(type)}`;
       document.getElementById('ch-editor-save').textContent = 'Create';
       document.getElementById('cc-type').disabled = false;
-      document.getElementById('cc-type').value = 'text';
+      document.getElementById('cc-type').value = type;
       document.getElementById('cc-name').value = '';
       document.getElementById('cc-topic').value = '';
       document.getElementById('cc-nsfw').value = 'false';
       populateChannelParentOptions(parentId);
+      syncChannelEditorType();
       openModal('m-channel-editor');
     }
 
@@ -137,7 +154,7 @@
       if (!ch) return;
       S.channelEditorMode = 'edit';
       S.channelEditorTarget = ch;
-      document.getElementById('ch-editor-title').textContent = 'Edit Channel';
+      document.getElementById('ch-editor-title').textContent = `Edit ${channelEntityLabel(ch)}`;
       document.getElementById('ch-editor-save').textContent = 'Save';
       document.getElementById('cc-type').value = ch.type;
       document.getElementById('cc-type').disabled = true;
@@ -145,6 +162,7 @@
       document.getElementById('cc-topic').value = ch.topic || '';
       document.getElementById('cc-nsfw').value = String(!!ch.is_nsfw);
       populateChannelParentOptions(ch.parent_id || null);
+      syncChannelEditorType();
       openModal('m-channel-editor');
     }
 
@@ -159,28 +177,35 @@
       try {
         if (S.channelEditorMode === 'create') {
           if (!S.activeSrv) throw new Error('No active server');
-          const ch = await POST(`/servers/${S.activeSrv.id}/channels`, {
-            name,
-            type,
-            topic: topic || null,
-            parent_id,
-            is_nsfw
-          });
+          const isCategory = isCategoryEntity(type);
+          const body = isCategory
+            ? { name, type }
+            : {
+              name,
+              type,
+              topic: topic || null,
+              parent_id,
+              is_nsfw
+            };
+          const ch = await POST(`/servers/${S.activeSrv.id}/channels`, body);
           if (!S.channels[S.activeSrv.id]) S.channels[S.activeSrv.id] = [];
           if (!S.channels[S.activeSrv.id].find(c => c.id === ch.id)) S.channels[S.activeSrv.id].push(ch);
           S.channels[S.activeSrv.id].sort((a, b) => a.position - b.position);
           renderChs();
           closeModal('m-channel-editor');
           if (ch.type === 'text') await pickCh(ch);
-          toast('Channel created', 'ok');
+          toast(`${channelEntityLabel(ch)} created`, 'ok');
         } else {
           const ch = S.channelEditorTarget;
-          const out = await PATCH(`/channels/${ch.id}`, {
-            name,
-            topic: topic || null,
-            parent_id,
-            is_nsfw
-          });
+          const body = isCategoryEntity(ch)
+            ? { name }
+            : {
+              name,
+              topic: topic || null,
+              parent_id,
+              is_nsfw
+            };
+          const out = await PATCH(`/channels/${ch.id}`, body);
           Object.assign(ch, out);
           renderChs();
           if (S.activeCh?.id === ch.id) {
@@ -188,7 +213,7 @@
             updateHeader();
           }
           closeModal('m-channel-editor');
-          toast('Channel updated', 'ok');
+          toast(`${channelEntityLabel(ch)} updated`, 'ok');
         }
       } catch (e) {
         toast(e.message, 'err');
@@ -196,24 +221,15 @@
     }
 
     function createCategory() {
-      showPrompt('New Category', 'Enter category name:', '', async (name) => {
-        if (!name || !S.activeSrv) return;
-        try {
-          const ch = await POST(`/servers/${S.activeSrv.id}/channels`, { name, type: 'category' });
-          if (!S.channels[S.activeSrv.id]) S.channels[S.activeSrv.id] = [];
-          if (!S.channels[S.activeSrv.id].find(c => c.id === ch.id)) S.channels[S.activeSrv.id].push(ch);
-          renderChs();
-          toast('Category created', 'ok');
-        } catch (e) {
-          toast(e.message, 'err');
-        }
-      });
+      openCreateCh(null, 'category');
     }
 
     async function deleteCh(chId) {
       const ch = findChannel(chId);
       if (!ch) return;
-      showConfirm('Delete Channel', `Delete #${ch.name}?`, async () => {
+      const label = channelEntityLabel(ch);
+      const targetName = isCategoryEntity(ch) ? ch.name : `#${ch.name}`;
+      showConfirm(`Delete ${label}`, `Delete ${targetName}?`, async () => {
         try {
           await DELETE_(`/channels/${ch.id}`);
           if (ch.server_id && S.channels[ch.server_id]) {
@@ -225,7 +241,7 @@
             updateHeader();
           }
           renderChs();
-          toast('Channel deleted', 'ok');
+          toast(`${label} deleted`, 'ok');
         } catch (e) {
           toast(e.message, 'err');
         }
@@ -276,6 +292,7 @@
         const res = await POST(`/shares/${code}/join`, {});
         if (res.kind !== 'group') throw new Error('This code is not a group link');
         await loadRelationships();
+        delete S.messages[res.channel_id];
         const local = findChannel(res.channel_id);
         if (local) await pickCh(local);
         closePrompt();
@@ -313,6 +330,7 @@
       if (!S.me) return;
       document.getElementById('set-user').value = S.me.username || '';
       document.getElementById('set-bio').value = S.me.bio || '';
+      document.getElementById('set-pronouns').value = S.me.pronouns || '';
       document.getElementById('set-av').value = S.me.avatar_url || '';
       document.getElementById('set-bn').value = S.me.banner_url || '';
       openModal('m-settings');
@@ -322,11 +340,13 @@
       const body = {};
       const username = document.getElementById('set-user').value.trim();
       const bio = document.getElementById('set-bio').value.trim();
+      const pronouns = document.getElementById('set-pronouns').value.trim();
       const avatar_url = document.getElementById('set-av').value.trim();
       const banner_url = document.getElementById('set-bn').value.trim();
 
       if (username !== S.me.username) body.username = username;
       if (bio !== (S.me.bio || '')) body.bio = bio;
+      if (pronouns !== (S.me.pronouns || '')) body.pronouns = pronouns || null;
       if (avatar_url !== (S.me.avatar_url || '')) body.avatar_url = avatar_url || null;
       if (banner_url !== (S.me.banner_url || '')) body.banner_url = banner_url || null;
 
@@ -434,9 +454,9 @@
     </div>
 
     ${manage ? `
-      <div class="fg"><label class="fl">Server Name</label><input class="fi" id="srv-name" type="text" value="${esc(srv.name)}"></div>
-      <div class="fg"><label class="fl">Icon URL</label><input class="fi" id="srv-icon" type="url" value="${esc(srv.icon_url || '')}" placeholder="https://..."></div>
-      <div class="fg"><label class="fl">Banner URL</label><input class="fi" id="srv-banner" type="url" value="${esc(srv.banner_url || '')}" placeholder="https://..."></div>
+      <div class="fg"><label class="fl">Server Name</label><input class="fi" id="srv-name" type="text" value="${esc(srv.name)}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+      <div class="fg"><label class="fl">Icon URL</label><input class="fi" id="srv-icon" type="url" value="${esc(srv.icon_url || '')}" placeholder="https://..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+      <div class="fg"><label class="fl">Banner URL</label><input class="fi" id="srv-banner" type="url" value="${esc(srv.banner_url || '')}" placeholder="https://..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
       <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="saveSrvSettings()">Save Changes</button>
     ` : `
       <div class="setting-card col">
@@ -583,7 +603,7 @@
       }
 
       return `<div style="padding:16px">
-    <input class="fi member-search" id="members-tab-search" type="text" placeholder="Search members..." oninput="filterMembersTab()">
+    <input class="fi member-search" id="members-tab-search" type="text" placeholder="Search members..." oninput="filterMembersTab()" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
     <div id="members-tab-list">${rows || '<div class="small-muted">No members.</div>'}</div>
   </div>`;
     }

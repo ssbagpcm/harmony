@@ -94,6 +94,7 @@
     let _confirmCb = null;
     let _ctxItems = [];
     let _modalZ = 1000;
+    let _uiEnhancerObserver = null;
     let _viewer = {
       open: false,
       scale: 1,
@@ -200,7 +201,69 @@
       return { id: 'groups-home', type: 'groups_home', name: 'Groups', topic: 'Create and manage your group chats' };
     }
     function docsHomeChannel() {
-      return { id: 'docs-home', type: 'docs_home', name: 'Project Docs', topic: 'Integrated project documentation with examples and implementation notes' };
+      return { id: 'docs-home', type: 'docs_home', name: 'Project Tutorial', topic: 'Integrated project tutorial with examples and implementation notes' };
+    }
+    function isHomeView(ch = S.activeCh) {
+      return ['friends_home', 'groups_home', 'docs_home'].includes(ch?.type);
+    }
+    function disableBrowserSuggestions(root = document) {
+      root.querySelectorAll('form').forEach(el => {
+        el.setAttribute('autocomplete', 'off');
+        el.setAttribute('data-form-type', 'other');
+      });
+      root.querySelectorAll('input, textarea').forEach(el => {
+        if (el.type === 'file' || el.type === 'color') return;
+        el.setAttribute('autocomplete', 'off');
+        el.setAttribute('autocapitalize', 'off');
+        el.setAttribute('autocorrect', 'off');
+        el.setAttribute('spellcheck', 'false');
+        el.setAttribute('aria-autocomplete', 'none');
+        el.setAttribute('data-lpignore', 'true');
+        el.setAttribute('data-1p-ignore', 'true');
+      });
+    }
+    function enableCustomTooltips(root = document) {
+      const elements = [];
+      if (root?.nodeType === 1 && root.matches?.('[title], [data-tip-text]')) {
+        elements.push(root);
+      }
+      if (root?.querySelectorAll) {
+        elements.push(...root.querySelectorAll('[title], [data-tip-text]'));
+      }
+      elements.forEach(el => {
+        const text = el.getAttribute('title') || el.dataset.tipText;
+        if (!text) return;
+        el.dataset.tipText = text;
+        if (el.hasAttribute('title')) el.removeAttribute('title');
+        if (el.dataset.tipBound === '1') return;
+        el.dataset.tipBound = '1';
+        el.addEventListener('mouseenter', event => tip(event, el.dataset.tipText));
+        el.addEventListener('mouseleave', () => hideTip());
+      });
+    }
+    function applyUIEnhancements(root = document) {
+      disableBrowserSuggestions(root);
+      enableCustomTooltips(root);
+    }
+    function observeUIEnhancements() {
+      if (_uiEnhancerObserver || typeof MutationObserver === 'undefined' || !document.body) return;
+      _uiEnhancerObserver = new MutationObserver(mutations => {
+        mutations.forEach(mutation => {
+          mutation.addedNodes.forEach(node => {
+            if (node.nodeType === 1) applyUIEnhancements(node);
+          });
+        });
+      });
+      _uiEnhancerObserver.observe(document.body, { childList: true, subtree: true });
+    }
+    applyUIEnhancements();
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        applyUIEnhancements();
+        observeUIEnhancements();
+      }, { once: true });
+    } else {
+      observeUIEnhancements();
     }
     function allDMEntries() {
       return [...S.dms, ...(S.dmOverview.pending || []), ...S.dmRequests];
@@ -317,6 +380,15 @@
       if (!S.activeCh.server_id) return true;
       return hasBits(currentChannelPermBits(), PERM.SEND_MESSAGES);
     }
+    function formatStatusLabel(status = 'offline') {
+      return {
+        online: 'Online',
+        idle: 'Idle',
+        dnd: 'Do Not Disturb',
+        invisible: 'Invisible',
+        offline: 'Offline',
+      }[status] || status;
+    }
     function isOwner(server = S.activeSrv) {
       return !!server && server.owner_id === S.me?.id;
     }
@@ -419,8 +491,7 @@
           break;
 
         case 'PRESENCE_UPDATE':
-          S.presence[d.user_id] = d.status || 'offline';
-          refreshPresence(d.user_id);
+          handleUserUpdate({ id: d.user_id, status: d.status || 'offline' });
           break;
 
         case 'TYPING_START':
@@ -683,6 +754,7 @@
       S.channelServerMap = {};
       S.replyTo = null;
       S.editingId = null;
+      if (typeof clearEditUI === 'function') clearEditUI();
       S.loading = {};
       S.pendingNew = 0;
       S.friendsMenuTab = 'requests';
@@ -801,6 +873,14 @@
         if (c._otherId === d.id) {
           if (d.username) c._name = d.username;
           if (d.avatar_url !== undefined) c._otherAv = d.avatar_url;
+          if (c.other_user) {
+            if (d.username) c.other_user.username = d.username;
+            if (d.avatar_url !== undefined) c.other_user.avatar_url = d.avatar_url;
+            if (d.bio !== undefined) c.other_user.bio = d.bio;
+            if (d.pronouns !== undefined) c.other_user.pronouns = d.pronouns;
+            if (d.banner_url !== undefined) c.other_user.banner_url = d.banner_url;
+            if (d.status) c.other_user.status = d.status;
+          }
           const stored = getStoredDMInfo(c.id) || {};
           storeDMInfo(c.id, {
             ...stored,
@@ -819,6 +899,7 @@
             if (d.username) m.user.username = d.username;
             if (d.avatar_url !== undefined) m.user.avatar_url = d.avatar_url;
             if (d.bio !== undefined) m.user.bio = d.bio;
+            if (d.pronouns !== undefined) m.user.pronouns = d.pronouns;
             if (d.banner_url !== undefined) m.user.banner_url = d.banner_url;
             if (d.status) m.user.status = d.status;
           }
@@ -831,6 +912,9 @@
           if (m.author_id === d.id && m.author) {
             if (d.username) m.author.username = d.username;
             if (d.avatar_url !== undefined) m.author.avatar_url = d.avatar_url;
+            if (d.bio !== undefined) m.author.bio = d.bio;
+            if (d.pronouns !== undefined) m.author.pronouns = d.pronouns;
+            if (d.banner_url !== undefined) m.author.banner_url = d.banner_url;
             if (d.status) m.author.status = d.status;
           }
           if (m.reply_to && m.reply_to.author_username && S.me?.id === d.id && d.username) {
@@ -913,6 +997,7 @@
       S.activeCh = null;
       S.replyTo = null;
       S.editingId = null;
+      if (typeof clearEditUI === 'function') clearEditUI();
       clearReply();
 
       renderRail();
@@ -1099,15 +1184,22 @@
       const ch = S.activeCh;
       const icons = { dm: 'message-square', group: 'users', friends_home: 'heart', groups_home: 'users', docs_home: 'book-open', note: 'bookmark', voice: 'volume-2', text: 'hash', category: 'folder' };
       const iconEl = document.getElementById('ch-hdr-icon');
+      const isHome = isHomeView(ch);
       iconEl.setAttribute('data-lucide', icons[ch?.type] || 'hash');
       document.getElementById('ch-hdr-name').textContent = ch ? (ch._name || ch.name || '—') : '—';
       document.getElementById('ch-hdr-topic').textContent = ch?.topic || '';
       document.getElementById('topic-sep').style.display = ch?.topic ? '' : 'none';
       document.getElementById('msg-input').placeholder = ch
-        ? ['friends_home', 'groups_home', 'docs_home'].includes(ch.type)
-          ? (ch.type === 'docs_home' ? 'Read-only documentation view' : 'Open a friend or group to chat')
+        ? isHome
+          ? (ch.type === 'docs_home' ? 'Read-only tutorial view' : 'Open a friend or group to chat')
           : `Message ${['dm', 'note', 'group'].includes(ch.type) ? '' : '#'}${ch._name || ch.name}`
         : 'Select a channel';
+      document.getElementById('btn-pins').style.display = isHome ? 'none' : '';
+      document.getElementById('btn-mentions').style.display = isHome ? 'none' : '';
+      if (isHome) {
+        closePins();
+        closeMentions();
+      }
       updateSrvSettingsBtn();
       updateMLBtn();
       updateShareBtn();
@@ -1120,8 +1212,13 @@
       const send = document.getElementById('btn-send');
       const attach = document.getElementById('btn-attach');
       const emoji = document.getElementById('btn-emoji');
+      const inputWrap = document.getElementById('input-wrap');
+      const typingBar = document.getElementById('typing-bar');
+      const isHome = isHomeView();
 
-      const enabled = !!S.activeCh && !['friends_home', 'groups_home', 'docs_home'].includes(S.activeCh.type) && canSendHere();
+      const enabled = !!S.activeCh && !isHome && canSendHere();
+      inputWrap.style.display = isHome ? 'none' : '';
+      typingBar.style.display = isHome ? 'none' : '';
       input.disabled = !enabled;
       send.classList.toggle('disabled', !enabled);
       attach.classList.toggle('disabled', !enabled);
@@ -1195,6 +1292,7 @@
       S.activeCh = ch;
       S.replyTo = null;
       S.editingId = null;
+      if (typeof clearEditUI === 'function') clearEditUI();
       clearReply();
       clearUnread(ch.id);
 
@@ -1208,8 +1306,9 @@
       await ensureChannelPerms(ch);
       updateComposerState();
 
-      if (!S.messages[ch.id]) {
-        await fetchMsgs(ch.id);
+      const shouldRefetchDirectHistory = ['dm', 'group', 'note'].includes(ch.type);
+      if (!S.messages[ch.id] || shouldRefetchDirectHistory) {
+        await fetchMsgs(ch.id, shouldRefetchDirectHistory);
       } else {
         renderMsgs();
         requestAnimationFrame(() => scrollBottom(true));
@@ -1327,7 +1426,7 @@
             ${avHTML({ id: c._otherId, username: c._name, avatar_url: c._otherAv }, 34, S.presence[c._otherId] || c.other_user?.status || 'offline', 'var(--bg-card)')}
             <div style="flex:1;min-width:0">
               <div style="font-weight:700">${esc(c._name || c.other_user?.username || 'Friend')}</div>
-              <div class="small-muted">${esc(c.other_user?.status || S.presence[c._otherId] || 'offline')}</div>
+              <div class="small-muted">${esc(formatStatusLabel(c.other_user?.status || S.presence[c._otherId] || 'offline'))}</div>
             </div>
           </label>
         `).join('');
@@ -1428,9 +1527,10 @@
         if (!S.inDMs) showDMs();
         else renderDMList();
 
-        const local = findChannel(ch.id);
-        if (local?.can_open !== false) {
-          await pickCh(local || ch);
+        const local = findChannel(ch.id) || ch;
+        const canAutoOpen = ['group', 'note'].includes(local?.type) || (local?.relationship_status === 'accepted' && local?.can_open !== false);
+        if (canAutoOpen) {
+          await pickCh(local);
         } else {
           toast('DM request sent', 'ok');
         }
@@ -1566,7 +1666,8 @@
 
     function friendsHomeHTML() {
       const requests = S.dmOverview.requests || [];
-      const pending = S.dmOverview.pending || [];
+      const blocked = (S.dmOverview.pending || []).filter(c => c.relationship_direction === 'incoming' && c.relationship_status === 'rejected');
+      const pending = (S.dmOverview.pending || []).filter(c => !(c.relationship_direction === 'incoming' && c.relationship_status === 'rejected'));
       const friends = S.dmOverview.friends || [];
       const tabs = [
         ['requests', 'Requests', requests.length],
@@ -1580,7 +1681,7 @@
           ${avHTML({ id: c._otherId, username: c._name, avatar_url: c._otherAv }, 36, S.presence[c._otherId] || c.other_user?.status || 'offline', 'var(--bg-card)')}
           <div style="min-width:0;flex:1">
             <div style="font-weight:700">${esc(c._name || c.other_user?.username || 'Friend')}</div>
-            <div class="small-muted">${esc(c.other_user?.status || S.presence[c._otherId] || 'offline')}</div>
+            <div class="small-muted">${esc(formatStatusLabel(c.other_user?.status || S.presence[c._otherId] || 'offline'))}</div>
           </div>
         </div>
         <button class="btn btn-secondary" onclick="pickDM('${c.id}')">Open</button>
@@ -1611,6 +1712,19 @@
         <button class="btn btn-secondary" onclick="pickChById('${c.id}')">Open</button>
       </div>`;
 
+      const blockedCard = c => `<div class="setting-card">
+        <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+          ${avHTML({ id: c._otherId, username: c._name, avatar_url: c._otherAv }, 36, S.presence[c._otherId] || c.other_user?.status || 'offline', 'var(--bg-card)')}
+          <div style="min-width:0;flex:1">
+            <div style="font-weight:700">${esc(c._name || c.other_user?.username || 'Blocked')}</div>
+            <div class="small-muted">Blocked request</div>
+          </div>
+        </div>
+        <div class="dm-actions">
+          <button class="dm-mini-btn accept" onclick="acceptDMRequest('${c.id}')">Accept</button>
+        </div>
+      </div>`;
+
       const block = (title, count, content, showBadge = false) => `<div style="padding:18px 20px 0">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div style="font-size:18px;font-weight:800">${title}</div>
@@ -1622,6 +1736,7 @@
       let content = '';
       if (activeTab === 'requests') {
         content = block('Requests', requests.length, requests.length ? requests.map(incomingCard).join('') : '<div class="small-muted">No incoming requests.</div>', true);
+        content += block('Blocked', blocked.length, blocked.length ? blocked.map(blockedCard).join('') : '<div class="small-muted">No blocked requests.</div>');
       } else if (activeTab === 'pending') {
         content = block('Pending', pending.length, pending.length ? pending.map(outgoingCard).join('') : '<div class="small-muted">No pending requests.</div>');
       } else {
@@ -1685,7 +1800,7 @@
         ${avHTML({ id: c._otherId, username: c._name, avatar_url: c._otherAv }, 36, S.presence[c._otherId] || c.other_user?.status || 'offline', 'var(--bg-card)')}
         <div style="flex:1;min-width:0">
           <div style="font-weight:700">${esc(c._name || c.other_user?.username || 'Friend')}</div>
-          <div class="small-muted">${esc(c.other_user?.status || S.presence[c._otherId] || 'offline')}</div>
+          <div class="small-muted">${esc(formatStatusLabel(c.other_user?.status || S.presence[c._otherId] || 'offline'))}</div>
         </div>
       </label>`;
 
@@ -1701,7 +1816,7 @@
         <div style="font-size:18px;font-weight:800;margin-bottom:12px">Create a group</div>
         <div class="setting-card" style="display:block">
           <div class="small-muted" style="margin-bottom:8px">Group name</div>
-          <input id="groups-home-name" class="input" maxlength="60" placeholder="Weekend plans">
+          <input id="groups-home-name" class="input" maxlength="60" placeholder="Weekend plans" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         </div>
         <div style="margin-top:14px;margin-bottom:10px;font-size:13px;font-weight:700;color:var(--t2)">Choose friends</div>
         ${friends.length ? friends.map(friendPickCard).join('') : '<div class="small-muted">You need at least one accepted friend to create a group.</div>'}
@@ -1834,7 +1949,7 @@
       S.docsLoading = true;
       try {
         const md = await fetch('/static/PROJECT_DOCS.md').then(r => {
-          if (!r.ok) throw new Error('Failed to load project docs');
+          if (!r.ok) throw new Error('Failed to load project tutorial');
           return r.text();
         });
         S.docsMarkdown = md;
@@ -1850,12 +1965,12 @@
     function docsHomeHTML() {
       const body = S.docsLoaded
         ? S.docsHtml
-        : `<div class="empty" style="min-height:52vh"><i data-lucide="loader-circle" class="spin" style="width:28px;height:28px"></i><p>Loading project docs...</p></div>`;
+        : `<div class="empty" style="min-height:52vh"><i data-lucide="loader-circle" class="spin" style="width:28px;height:28px"></i><p>Loading project tutorial...</p></div>`;
       return `<div class="docs-page">
         <div class="docs-shell">
           <div class="docs-hero">
             <div class="docs-kicker">Internal Documentation</div>
-            <div class="docs-title">Harmony Project Docs</div>
+            <div class="docs-title">Harmony Project Tutorial</div>
             <div class="docs-subtitle">Architecture notes, feature overview, API examples, and implementation guidance directly inside the app UI.</div>
           </div>
           <div class="docs-body">${body}</div>
@@ -1907,18 +2022,21 @@
 
       if (S.activeCh.type === 'friends_home') {
         list.innerHTML = friendsHomeHTML();
+        disableBrowserSuggestions(list);
         lucide.createIcons();
         return;
       }
 
       if (S.activeCh.type === 'groups_home') {
         list.innerHTML = groupsHomeHTML();
+        disableBrowserSuggestions(list);
         lucide.createIcons();
         return;
       }
 
       if (S.activeCh.type === 'docs_home') {
         list.innerHTML = docsHomeHTML();
+        disableBrowserSuggestions(list);
         lucide.createIcons();
         if (!S.docsLoaded && !S.docsLoading) {
           loadProjectDocs().then(() => {
@@ -1959,6 +2077,7 @@
       });
 
       list.innerHTML = noticeHtml + html;
+      disableBrowserSuggestions(list);
       lucide.createIcons();
 
       if (keepBottom) {
@@ -2252,9 +2371,11 @@
       if (!content) return;
 
       if (S.editingId) {
-        await finishEdit(content);
-        inp.value = '';
-        autoResize(inp);
+        const saved = await finishEdit(content);
+        if (saved) {
+          inp.value = '';
+          autoResize(inp);
+        }
         return;
       }
 
@@ -2297,6 +2418,7 @@
     function setReplyById(id) {
       const m = findMessageById(id);
       if (!m) return;
+      if (S.editingId) cancelEdit();
       S.replyTo = m;
       const authorName = m.author?.server_nickname || getDisplayNameForUser(m.author?.id, m.author?.username || 'Unknown');
       document.getElementById('reply-ui').style.display = 'flex';
@@ -2315,30 +2437,52 @@
       setTimeout(() => { el.style.background = ''; }, 1500);
     }
 
+    function showEditUI(message) {
+      const editUi = document.getElementById('edit-ui');
+      const editTxt = document.getElementById('edit-ui-txt');
+      if (!editUi || !editTxt) return;
+      const text = String(message?.content || '').trim();
+      const preview = text.length > 90 ? `${text.slice(0, 90)}…` : text;
+      editUi.style.display = 'flex';
+      editTxt.innerHTML = `Editing <strong>your message</strong>${preview ? `: ${esc(preview)}` : ''}`;
+    }
+
+    function clearEditUI() {
+      const editUi = document.getElementById('edit-ui');
+      if (editUi) editUi.style.display = 'none';
+    }
+
     function startEdit(id) {
       const m = findMessageById(id);
       if (!m || m.author_id !== S.me?.id) return;
+      clearReply();
       S.editingId = id;
       const inp = document.getElementById('msg-input');
       inp.value = m.content || '';
       inp.placeholder = 'Edit message… (Esc to cancel)';
+      showEditUI(m);
       inp.focus();
       autoResize(inp);
     }
 
     async function finishEdit(content) {
       const id = S.editingId;
-      S.editingId = null;
-      updateHeader();
+      if (!id) return false;
       try {
         const out = await PATCH(`/channels/${S.activeCh.id}/messages/${id}`, { content });
+        S.editingId = null;
+        clearEditUI();
+        updateHeader();
         handleMessageUpdate(out);
+        return true;
       } catch (e) {
         toast(e.message, 'err');
+        return false;
       }
     }
     function cancelEdit() {
       S.editingId = null;
+      clearEditUI();
       const inp = document.getElementById('msg-input');
       inp.value = '';
       autoResize(inp);
@@ -2501,6 +2645,7 @@
     //  Pins / mentions / search
     // ═══════════════════════════════════════════════════
     function togglePins() {
+      if (!S.activeCh || isHomeView()) return;
       S.pinsOpen = !S.pinsOpen;
       if (S.pinsOpen && S.mentionsOpen) closeMentions();
       document.getElementById('pins-panel').style.display = S.pinsOpen ? 'block' : 'none';
@@ -2541,6 +2686,7 @@
     }
 
     function toggleMentions() {
+      if (!S.activeCh || isHomeView()) return;
       S.mentionsOpen = !S.mentionsOpen;
       if (S.mentionsOpen && S.pinsOpen) closePins();
       document.getElementById('mentions-panel').style.display = S.mentionsOpen ? 'block' : 'none';
@@ -2574,14 +2720,116 @@
   `).join('');
     }
 
+    function searchModalMeta() {
+      if (S.activeCh?.type === 'friends_home') {
+        return { title: 'Search Friends', placeholder: 'Search friends, requests, pending...' };
+      }
+      if (S.activeCh?.type === 'groups_home') {
+        return { title: 'Search Groups', placeholder: 'Search groups...' };
+      }
+      if (S.activeCh?.type === 'docs_home') {
+        return { title: 'Search Tutorial', placeholder: 'Search the tutorial...' };
+      }
+      return { title: 'Search Messages', placeholder: 'Search...' };
+    }
+
+    function renderSearchResults(results, countLabel, onSelect) {
+      const out = document.getElementById('s-results');
+      if (!results.length) {
+        out.innerHTML = '<div class="empty"><p>No results.</p></div>';
+        return;
+      }
+      out.innerHTML = results.map((item, index) => `
+        <div style="padding:10px;background:var(--bg-card);border-radius:var(--radius-sm);margin-bottom:6px;cursor:pointer;display:flex;align-items:flex-start;gap:10px" onclick="${onSelect(item, index)}">
+          <i data-lucide="${item.icon}" style="width:16px;height:16px;color:var(--t3);margin-top:2px;flex-shrink:0"></i>
+          <div style="min-width:0;flex:1">
+            <div style="font-size:13px;color:var(--t1);font-weight:700">${esc(item.title)}</div>
+            <div style="font-size:12px;color:var(--t3);margin-top:2px">${esc(item.subtitle)}</div>
+          </div>
+        </div>
+      `).join('') + `<div style="font-size:12px;color:var(--t4);padding:6px">${countLabel}</div>`;
+      lucide.createIcons();
+    }
+
+    function searchFriendsHome(needle) {
+      const sections = [
+        { icon: 'heart', label: 'Friend', items: S.dmOverview.friends || [] },
+        { icon: 'inbox', label: 'Request', items: S.dmOverview.requests || [] },
+        { icon: 'clock-3', label: 'Pending', items: S.dmOverview.pending || [] },
+      ];
+      const matches = [];
+
+      sections.forEach(section => {
+        section.items.forEach(entry => {
+          const name = entry._name || entry.other_user?.username || entry.name || 'Unknown';
+          const sectionLabel = entry.relationship_direction === 'incoming' && entry.relationship_status === 'rejected'
+            ? 'Blocked'
+            : section.label;
+          const subtitle = `${sectionLabel} · ${formatStatusLabel(entry.other_user?.status || S.presence[entry._otherId] || entry.relationship_status || 'offline')}`;
+          const haystack = [name, subtitle, entry.id, entry._otherId, entry.other_user?.username]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+          if (haystack.includes(needle)) {
+            matches.push({
+              id: entry.id,
+              title: name,
+              subtitle,
+              icon: section.icon,
+            });
+          }
+        });
+      });
+
+      return matches;
+    }
+
+    function searchGroupsHome(needle) {
+      return (S.dmOverview.groups || []).reduce((matches, entry) => {
+        const name = entry.name || entry._name || 'Group';
+        const subtitle = `Group · ${entry.participant_count || 0} member${(entry.participant_count || 0) > 1 ? 's' : ''}`;
+        const haystack = [name, subtitle, entry.id].join(' ').toLowerCase();
+        if (haystack.includes(needle)) {
+          matches.push({
+            id: entry.id,
+            title: name,
+            subtitle,
+            icon: 'users',
+          });
+        }
+        return matches;
+      }, []);
+    }
+
+    function searchDocsHome(needle) {
+      const matches = [];
+      String(S.docsMarkdown || '').split('\n').forEach((line, index) => {
+        const text = line.trim();
+        if (!text) return;
+        if (text.toLowerCase().includes(needle)) {
+          matches.push({
+            title: text.replace(/^#+\s*/, '').slice(0, 120),
+            subtitle: `Tutorial line ${index + 1}`,
+            icon: 'book-open',
+          });
+        }
+      });
+      return matches.slice(0, 30);
+    }
+
     function toggleSearch() {
       if (!S.activeCh) {
         toast('Select a channel first', 'err');
         return;
       }
+      const meta = searchModalMeta();
       S.searchOpen = true;
+      document.querySelector('#m-search .modal-title').textContent = meta.title;
+      document.getElementById('sq').placeholder = meta.placeholder;
+      document.getElementById('s-results').innerHTML = '';
       document.getElementById('btn-search').classList.add('active');
       openModal('m-search');
+      requestAnimationFrame(() => document.getElementById('sq')?.focus());
     }
     function closeSearchModal() {
       S.searchOpen = false;
@@ -2597,6 +2845,27 @@
       lucide.createIcons();
 
       try {
+        const needle = q.toLowerCase();
+
+        if (S.activeCh.type === 'friends_home') {
+          const matches = searchFriendsHome(needle);
+          renderSearchResults(matches, `${matches.length} result(s)`, item => `pickChById('${item.id}');closeSearchModal()`);
+          return;
+        }
+
+        if (S.activeCh.type === 'groups_home') {
+          const matches = searchGroupsHome(needle);
+          renderSearchResults(matches, `${matches.length} result(s)`, item => `pickChById('${item.id}');closeSearchModal()`);
+          return;
+        }
+
+        if (S.activeCh.type === 'docs_home') {
+          if (!S.docsLoaded && !S.docsLoading) await loadProjectDocs();
+          const matches = searchDocsHome(needle);
+          renderSearchResults(matches, `${matches.length} result(s)`, () => `closeSearchModal()`);
+          return;
+        }
+
         if (S.activeSrv && S.activeCh.server_id) {
           const r = await GET(`/servers/${S.activeSrv.id}/search?q=${encodeURIComponent(q)}&limit=30`);
           if (!r.messages.length) {
@@ -2616,7 +2885,6 @@
 
         if (!S.messages[S.activeCh.id]) await fetchMsgs(S.activeCh.id, true);
         const source = S.messages[S.activeCh.id] || [];
-        const needle = q.toLowerCase();
         const matches = source.filter(m =>
           (m.content || '').toLowerCase().includes(needle) ||
           (m.author?.username || '').toLowerCase().includes(needle) ||
@@ -2767,17 +3035,34 @@
       ).join('');
     }
 
-    function openCreateCh(parentId = null) {
+    function isCategoryEntity(chOrType) {
+      return (typeof chOrType === 'string' ? chOrType : chOrType?.type) === 'category';
+    }
+
+    function channelEntityLabel(chOrType) {
+      return isCategoryEntity(chOrType) ? 'Category' : 'Channel';
+    }
+
+    function syncChannelEditorType() {
+      const type = document.getElementById('cc-type').value;
+      const isCategory = isCategoryEntity(type);
+      document.getElementById('cc-topic-group').style.display = isCategory ? 'none' : '';
+      document.getElementById('cc-parent-group').style.display = isCategory ? 'none' : '';
+      document.getElementById('cc-nsfw-group').style.display = isCategory ? 'none' : '';
+    }
+
+    function openCreateCh(parentId = null, type = 'text') {
       S.channelEditorMode = 'create';
       S.channelEditorTarget = { parent_id: parentId };
-      document.getElementById('ch-editor-title').textContent = 'Create Channel';
+      document.getElementById('ch-editor-title').textContent = `Create ${channelEntityLabel(type)}`;
       document.getElementById('ch-editor-save').textContent = 'Create';
       document.getElementById('cc-type').disabled = false;
-      document.getElementById('cc-type').value = 'text';
+      document.getElementById('cc-type').value = type;
       document.getElementById('cc-name').value = '';
       document.getElementById('cc-topic').value = '';
       document.getElementById('cc-nsfw').value = 'false';
       populateChannelParentOptions(parentId);
+      syncChannelEditorType();
       openModal('m-channel-editor');
     }
 
@@ -2786,7 +3071,7 @@
       if (!ch) return;
       S.channelEditorMode = 'edit';
       S.channelEditorTarget = ch;
-      document.getElementById('ch-editor-title').textContent = 'Edit Channel';
+      document.getElementById('ch-editor-title').textContent = `Edit ${channelEntityLabel(ch)}`;
       document.getElementById('ch-editor-save').textContent = 'Save';
       document.getElementById('cc-type').value = ch.type;
       document.getElementById('cc-type').disabled = true;
@@ -2794,6 +3079,7 @@
       document.getElementById('cc-topic').value = ch.topic || '';
       document.getElementById('cc-nsfw').value = String(!!ch.is_nsfw);
       populateChannelParentOptions(ch.parent_id || null);
+      syncChannelEditorType();
       openModal('m-channel-editor');
     }
 
@@ -2808,28 +3094,35 @@
       try {
         if (S.channelEditorMode === 'create') {
           if (!S.activeSrv) throw new Error('No active server');
-          const ch = await POST(`/servers/${S.activeSrv.id}/channels`, {
-            name,
-            type,
-            topic: topic || null,
-            parent_id,
-            is_nsfw
-          });
+          const isCategory = isCategoryEntity(type);
+          const body = isCategory
+            ? { name, type }
+            : {
+              name,
+              type,
+              topic: topic || null,
+              parent_id,
+              is_nsfw
+            };
+          const ch = await POST(`/servers/${S.activeSrv.id}/channels`, body);
           if (!S.channels[S.activeSrv.id]) S.channels[S.activeSrv.id] = [];
           if (!S.channels[S.activeSrv.id].find(c => c.id === ch.id)) S.channels[S.activeSrv.id].push(ch);
           S.channels[S.activeSrv.id].sort((a, b) => a.position - b.position);
           renderChs();
           closeModal('m-channel-editor');
           if (ch.type === 'text') await pickCh(ch);
-          toast('Channel created', 'ok');
+          toast(`${channelEntityLabel(ch)} created`, 'ok');
         } else {
           const ch = S.channelEditorTarget;
-          const out = await PATCH(`/channels/${ch.id}`, {
-            name,
-            topic: topic || null,
-            parent_id,
-            is_nsfw
-          });
+          const body = isCategoryEntity(ch)
+            ? { name }
+            : {
+              name,
+              topic: topic || null,
+              parent_id,
+              is_nsfw
+            };
+          const out = await PATCH(`/channels/${ch.id}`, body);
           Object.assign(ch, out);
           renderChs();
           if (S.activeCh?.id === ch.id) {
@@ -2837,7 +3130,7 @@
             updateHeader();
           }
           closeModal('m-channel-editor');
-          toast('Channel updated', 'ok');
+          toast(`${channelEntityLabel(ch)} updated`, 'ok');
         }
       } catch (e) {
         toast(e.message, 'err');
@@ -2845,24 +3138,15 @@
     }
 
     function createCategory() {
-      showPrompt('New Category', 'Enter category name:', '', async (name) => {
-        if (!name || !S.activeSrv) return;
-        try {
-          const ch = await POST(`/servers/${S.activeSrv.id}/channels`, { name, type: 'category' });
-          if (!S.channels[S.activeSrv.id]) S.channels[S.activeSrv.id] = [];
-          if (!S.channels[S.activeSrv.id].find(c => c.id === ch.id)) S.channels[S.activeSrv.id].push(ch);
-          renderChs();
-          toast('Category created', 'ok');
-        } catch (e) {
-          toast(e.message, 'err');
-        }
-      });
+      openCreateCh(null, 'category');
     }
 
     async function deleteCh(chId) {
       const ch = findChannel(chId);
       if (!ch) return;
-      showConfirm('Delete Channel', `Delete #${ch.name}?`, async () => {
+      const label = channelEntityLabel(ch);
+      const targetName = isCategoryEntity(ch) ? ch.name : `#${ch.name}`;
+      showConfirm(`Delete ${label}`, `Delete ${targetName}?`, async () => {
         try {
           await DELETE_(`/channels/${ch.id}`);
           if (ch.server_id && S.channels[ch.server_id]) {
@@ -2874,7 +3158,7 @@
             updateHeader();
           }
           renderChs();
-          toast('Channel deleted', 'ok');
+          toast(`${label} deleted`, 'ok');
         } catch (e) {
           toast(e.message, 'err');
         }
@@ -2925,6 +3209,7 @@
         const res = await POST(`/shares/${code}/join`, {});
         if (res.kind !== 'group') throw new Error('This code is not a group link');
         await loadRelationships();
+        delete S.messages[res.channel_id];
         const local = findChannel(res.channel_id);
         if (local) await pickCh(local);
         closePrompt();
@@ -2962,6 +3247,7 @@
       if (!S.me) return;
       document.getElementById('set-user').value = S.me.username || '';
       document.getElementById('set-bio').value = S.me.bio || '';
+      document.getElementById('set-pronouns').value = S.me.pronouns || '';
       document.getElementById('set-av').value = S.me.avatar_url || '';
       document.getElementById('set-bn').value = S.me.banner_url || '';
       openModal('m-settings');
@@ -2971,11 +3257,13 @@
       const body = {};
       const username = document.getElementById('set-user').value.trim();
       const bio = document.getElementById('set-bio').value.trim();
+      const pronouns = document.getElementById('set-pronouns').value.trim();
       const avatar_url = document.getElementById('set-av').value.trim();
       const banner_url = document.getElementById('set-bn').value.trim();
 
       if (username !== S.me.username) body.username = username;
       if (bio !== (S.me.bio || '')) body.bio = bio;
+      if (pronouns !== (S.me.pronouns || '')) body.pronouns = pronouns || null;
       if (avatar_url !== (S.me.avatar_url || '')) body.avatar_url = avatar_url || null;
       if (banner_url !== (S.me.banner_url || '')) body.banner_url = banner_url || null;
 
@@ -3083,9 +3371,9 @@
     </div>
 
     ${manage ? `
-      <div class="fg"><label class="fl">Server Name</label><input class="fi" id="srv-name" type="text" value="${esc(srv.name)}"></div>
-      <div class="fg"><label class="fl">Icon URL</label><input class="fi" id="srv-icon" type="url" value="${esc(srv.icon_url || '')}" placeholder="https://..."></div>
-      <div class="fg"><label class="fl">Banner URL</label><input class="fi" id="srv-banner" type="url" value="${esc(srv.banner_url || '')}" placeholder="https://..."></div>
+      <div class="fg"><label class="fl">Server Name</label><input class="fi" id="srv-name" type="text" value="${esc(srv.name)}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+      <div class="fg"><label class="fl">Icon URL</label><input class="fi" id="srv-icon" type="url" value="${esc(srv.icon_url || '')}" placeholder="https://..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+      <div class="fg"><label class="fl">Banner URL</label><input class="fi" id="srv-banner" type="url" value="${esc(srv.banner_url || '')}" placeholder="https://..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
       <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="saveSrvSettings()">Save Changes</button>
     ` : `
       <div class="setting-card col">
@@ -3232,7 +3520,7 @@
       }
 
       return `<div style="padding:16px">
-    <input class="fi member-search" id="members-tab-search" type="text" placeholder="Search members..." oninput="filterMembersTab()">
+    <input class="fi member-search" id="members-tab-search" type="text" placeholder="Search members..." oninput="filterMembersTab()" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
     <div id="members-tab-list">${rows || '<div class="small-muted">No members.</div>'}</div>
   </div>`;
     }
@@ -3576,6 +3864,7 @@
       try {
         const user = await GET(`/users/${uid}`);
         const status = S.presence[uid] || user.status || 'offline';
+        const statusLabel = formatStatusLabel(status);
         const isMe = uid === S.me?.id;
         const bannerStyle = user.banner_url
           ? `background:url(${escA(user.banner_url)}) center/cover;height:90px`
@@ -3592,7 +3881,8 @@
       </div>
       <div style="padding:42px 16px 16px">
         <div style="font-size:18px;font-weight:700">${esc(user.username)}<span style="font-size:14px;color:var(--t3);font-weight:400">#${user.discriminator || '0000'}</span></div>
-        <div class="small-muted">${esc(status)}</div>
+        <div class="small-muted">${esc(statusLabel)}</div>
+        ${user.pronouns ? `<div class="small-muted" style="margin-top:4px">${esc(user.pronouns)}</div>` : ''}
         ${user.bio ? `<div style="margin-top:12px;color:var(--t2)">${esc(user.bio)}</div>` : ''}
         <div style="display:flex;gap:8px;margin-top:16px">
           ${!isMe ? `<button class="btn btn-primary" style="flex:1" onclick="sendDMTo('${uid}')">Message</button>` : ''}
@@ -3615,9 +3905,10 @@
         if (!S.inDMs) showDMs();
         else renderDMList();
 
-        const local = findChannel(ch.id);
-        if (local?.can_open !== false) {
-          await pickCh(local || ch);
+        const local = findChannel(ch.id) || ch;
+        const canAutoOpen = ['group', 'note'].includes(local?.type) || (local?.relationship_status === 'accepted' && local?.can_open !== false);
+        if (canAutoOpen) {
+          await pickCh(local);
         } else {
           toast('DM request sent', 'ok');
         }
@@ -3660,12 +3951,26 @@
     // ═══════════════════════════════════════════════════
     //  Context menus
     // ═══════════════════════════════════════════════════
+    function compactCtxItems(items = []) {
+      const compact = [];
+      items.forEach(item => {
+        if (!item) {
+          if (!compact.length || !compact[compact.length - 1]) return;
+          compact.push(null);
+          return;
+        }
+        compact.push(item);
+      });
+      while (compact.length && !compact[compact.length - 1]) compact.pop();
+      return compact;
+    }
+
     function ctxMenu(event, items) {
       event.preventDefault();
       event.stopPropagation();
-      _ctxItems = items;
+      _ctxItems = compactCtxItems(items);
       const m = document.getElementById('ctx-menu');
-      m.innerHTML = items.map((item, i) => {
+      m.innerHTML = _ctxItems.map((item, i) => {
         if (!item) return '<div class="ctx-sep"></div>';
         return `<div class="ctx-item${item.cls ? ' ' + item.cls : ''}" onclick="ctxRun(${i})">
       <i data-lucide="${item.icon}" style="width:14px;height:14px;flex-shrink:0"></i>
@@ -3713,13 +4018,14 @@
         return;
       }
       const editLabel = ch.type === 'category' ? 'Edit Category' : 'Edit Channel';
-      ctxMenu(event, [
+      const items = [
         { icon: 'copy', label: 'Copy Channel ID', fn: () => navigator.clipboard.writeText(ch.id).then(() => toast('Copied', 'ok')) },
-        { icon: 'pin', label: 'Pinned Messages', fn: () => { pickCh(ch).then(() => setTimeout(openPins, 100)); } },
+        ch.type === 'category' ? null : { icon: 'pin', label: 'Pinned Messages', fn: () => { pickCh(ch).then(() => setTimeout(openPins, 100)); } },
         canManageChannels() && ch.server_id ? null : null,
         canManageChannels() && ch.server_id ? { icon: 'pencil', label: editLabel, fn: () => openEditChannel(ch.id) } : null,
-        canManageChannels() && ch.server_id ? { icon: 'trash-2', label: 'Delete Channel', cls: 'danger', fn: () => deleteCh(ch.id) } : null
-      ].filter((x, idx, arr) => x !== null || (arr[idx + 1] || arr[idx - 1])));
+        canManageChannels() && ch.server_id ? { icon: 'trash-2', label: `Delete ${channelEntityLabel(ch)}`, cls: 'danger', fn: () => deleteCh(ch.id) } : null
+      ];
+      ctxMenu(event, items);
     }
 
     async function renameGroup(channelId, currentName) {
@@ -3749,7 +4055,7 @@
         notMe && canManageRoles() ? { icon: 'shield', label: 'Manage Roles', fn: () => manageRoles(uid) } : null,
         notMe && canKickMembers() ? { icon: 'user-minus', label: 'Kick', cls: 'danger', fn: () => kickUser(uid) } : null,
         notMe && canBanMembers() ? { icon: 'ban', label: 'Ban', cls: 'danger', fn: () => banUser(uid) } : null,
-      ].filter((x, idx, arr) => x !== null || (arr[idx + 1] || arr[idx - 1])));
+      ]);
     }
 
     function msgCtx(event, msgId) {
@@ -3770,6 +4076,7 @@
       if (!el) return;
       el.style.zIndex = ++_modalZ;
       el.style.display = 'flex';
+      applyUIEnhancements(el);
       lucide.createIcons();
     }
     function closeModal(id) {
@@ -3860,8 +4167,20 @@
       const t = document.getElementById('tooltip');
       t.textContent = text;
       t.style.display = 'block';
-      t.style.left = (event.clientX + 16) + 'px';
-      t.style.top = (event.clientY - 4) + 'px';
+      const pad = 12;
+      let left = event.clientX + 16;
+      let top = event.clientY - 4;
+      const rect = t.getBoundingClientRect();
+      if (left + rect.width + pad > window.innerWidth) {
+        left = Math.max(pad, window.innerWidth - rect.width - pad);
+      }
+      if (top + rect.height + pad > window.innerHeight) {
+        top = Math.max(pad, event.clientY - rect.height - 12);
+      }
+      if (top < pad) top = pad;
+      if (left < pad) left = pad;
+      t.style.left = left + 'px';
+      t.style.top = top + 'px';
     }
     function hideTip() {
       document.getElementById('tooltip').style.display = 'none';

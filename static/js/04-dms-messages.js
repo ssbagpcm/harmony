@@ -90,7 +90,7 @@
             ${avHTML({ id: c._otherId, username: c._name, avatar_url: c._otherAv }, 34, S.presence[c._otherId] || c.other_user?.status || 'offline', 'var(--bg-card)')}
             <div style="flex:1;min-width:0">
               <div style="font-weight:700">${esc(c._name || c.other_user?.username || 'Friend')}</div>
-              <div class="small-muted">${esc(c.other_user?.status || S.presence[c._otherId] || 'offline')}</div>
+              <div class="small-muted">${esc(formatStatusLabel(c.other_user?.status || S.presence[c._otherId] || 'offline'))}</div>
             </div>
           </label>
         `).join('');
@@ -191,9 +191,10 @@
         if (!S.inDMs) showDMs();
         else renderDMList();
 
-        const local = findChannel(ch.id);
-        if (local?.can_open !== false) {
-          await pickCh(local || ch);
+        const local = findChannel(ch.id) || ch;
+        const canAutoOpen = ['group', 'note'].includes(local?.type) || (local?.relationship_status === 'accepted' && local?.can_open !== false);
+        if (canAutoOpen) {
+          await pickCh(local);
         } else {
           toast('DM request sent', 'ok');
         }
@@ -329,7 +330,8 @@
 
     function friendsHomeHTML() {
       const requests = S.dmOverview.requests || [];
-      const pending = S.dmOverview.pending || [];
+      const blocked = (S.dmOverview.pending || []).filter(c => c.relationship_direction === 'incoming' && c.relationship_status === 'rejected');
+      const pending = (S.dmOverview.pending || []).filter(c => !(c.relationship_direction === 'incoming' && c.relationship_status === 'rejected'));
       const friends = S.dmOverview.friends || [];
       const tabs = [
         ['requests', 'Requests', requests.length],
@@ -343,7 +345,7 @@
           ${avHTML({ id: c._otherId, username: c._name, avatar_url: c._otherAv }, 36, S.presence[c._otherId] || c.other_user?.status || 'offline', 'var(--bg-card)')}
           <div style="min-width:0;flex:1">
             <div style="font-weight:700">${esc(c._name || c.other_user?.username || 'Friend')}</div>
-            <div class="small-muted">${esc(c.other_user?.status || S.presence[c._otherId] || 'offline')}</div>
+            <div class="small-muted">${esc(formatStatusLabel(c.other_user?.status || S.presence[c._otherId] || 'offline'))}</div>
           </div>
         </div>
         <button class="btn btn-secondary" onclick="pickDM('${c.id}')">Open</button>
@@ -374,6 +376,19 @@
         <button class="btn btn-secondary" onclick="pickChById('${c.id}')">Open</button>
       </div>`;
 
+      const blockedCard = c => `<div class="setting-card">
+        <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+          ${avHTML({ id: c._otherId, username: c._name, avatar_url: c._otherAv }, 36, S.presence[c._otherId] || c.other_user?.status || 'offline', 'var(--bg-card)')}
+          <div style="min-width:0;flex:1">
+            <div style="font-weight:700">${esc(c._name || c.other_user?.username || 'Blocked')}</div>
+            <div class="small-muted">Blocked request</div>
+          </div>
+        </div>
+        <div class="dm-actions">
+          <button class="dm-mini-btn accept" onclick="acceptDMRequest('${c.id}')">Accept</button>
+        </div>
+      </div>`;
+
       const block = (title, count, content, showBadge = false) => `<div style="padding:18px 20px 0">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div style="font-size:18px;font-weight:800">${title}</div>
@@ -385,6 +400,7 @@
       let content = '';
       if (activeTab === 'requests') {
         content = block('Requests', requests.length, requests.length ? requests.map(incomingCard).join('') : '<div class="small-muted">No incoming requests.</div>', true);
+        content += block('Blocked', blocked.length, blocked.length ? blocked.map(blockedCard).join('') : '<div class="small-muted">No blocked requests.</div>');
       } else if (activeTab === 'pending') {
         content = block('Pending', pending.length, pending.length ? pending.map(outgoingCard).join('') : '<div class="small-muted">No pending requests.</div>');
       } else {
@@ -448,7 +464,7 @@
         ${avHTML({ id: c._otherId, username: c._name, avatar_url: c._otherAv }, 36, S.presence[c._otherId] || c.other_user?.status || 'offline', 'var(--bg-card)')}
         <div style="flex:1;min-width:0">
           <div style="font-weight:700">${esc(c._name || c.other_user?.username || 'Friend')}</div>
-          <div class="small-muted">${esc(c.other_user?.status || S.presence[c._otherId] || 'offline')}</div>
+          <div class="small-muted">${esc(formatStatusLabel(c.other_user?.status || S.presence[c._otherId] || 'offline'))}</div>
         </div>
       </label>`;
 
@@ -464,7 +480,7 @@
         <div style="font-size:18px;font-weight:800;margin-bottom:12px">Create a group</div>
         <div class="setting-card" style="display:block">
           <div class="small-muted" style="margin-bottom:8px">Group name</div>
-          <input id="groups-home-name" class="input" maxlength="60" placeholder="Weekend plans">
+          <input id="groups-home-name" class="input" maxlength="60" placeholder="Weekend plans" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         </div>
         <div style="margin-top:14px;margin-bottom:10px;font-size:13px;font-weight:700;color:var(--t2)">Choose friends</div>
         ${friends.length ? friends.map(friendPickCard).join('') : '<div class="small-muted">You need at least one accepted friend to create a group.</div>'}
@@ -597,7 +613,7 @@
       S.docsLoading = true;
       try {
         const md = await fetch('/static/PROJECT_DOCS.md').then(r => {
-          if (!r.ok) throw new Error('Failed to load project docs');
+          if (!r.ok) throw new Error('Failed to load project tutorial');
           return r.text();
         });
         S.docsMarkdown = md;
@@ -613,12 +629,12 @@
     function docsHomeHTML() {
       const body = S.docsLoaded
         ? S.docsHtml
-        : `<div class="empty" style="min-height:52vh"><i data-lucide="loader-circle" class="spin" style="width:28px;height:28px"></i><p>Loading project docs...</p></div>`;
+        : `<div class="empty" style="min-height:52vh"><i data-lucide="loader-circle" class="spin" style="width:28px;height:28px"></i><p>Loading project tutorial...</p></div>`;
       return `<div class="docs-page">
         <div class="docs-shell">
           <div class="docs-hero">
             <div class="docs-kicker">Internal Documentation</div>
-            <div class="docs-title">Harmony Project Docs</div>
+            <div class="docs-title">Harmony Project Tutorial</div>
             <div class="docs-subtitle">Architecture notes, feature overview, API examples, and implementation guidance directly inside the app UI.</div>
           </div>
           <div class="docs-body">${body}</div>
@@ -740,18 +756,21 @@
 
       if (S.activeCh.type === 'friends_home') {
         list.innerHTML = friendsHomeHTML();
+        disableBrowserSuggestions(list);
         lucide.createIcons();
         return;
       }
 
       if (S.activeCh.type === 'groups_home') {
         list.innerHTML = groupsHomeHTML();
+        disableBrowserSuggestions(list);
         lucide.createIcons();
         return;
       }
 
       if (S.activeCh.type === 'docs_home') {
         list.innerHTML = docsHomeHTML();
+        disableBrowserSuggestions(list);
         lucide.createIcons();
         if (!S.docsLoaded && !S.docsLoading) {
           loadProjectDocs().then(() => {
@@ -792,6 +811,7 @@
       });
 
       list.innerHTML = noticeHtml + html;
+      disableBrowserSuggestions(list);
       lucide.createIcons();
       restoreInlineMediaState(mediaStates);
 
@@ -1087,9 +1107,11 @@
       if (!content) return;
 
       if (S.editingId) {
-        await finishEdit(content);
-        inp.value = '';
-        autoResize(inp);
+        const saved = await finishEdit(content);
+        if (saved) {
+          inp.value = '';
+          autoResize(inp);
+        }
         return;
       }
 
@@ -1132,6 +1154,7 @@
     function setReplyById(id) {
       const m = findMessageById(id);
       if (!m) return;
+      if (S.editingId) cancelEdit();
       S.replyTo = m;
       const authorName = m.author?.server_nickname || getDisplayNameForUser(m.author?.id, m.author?.username || 'Unknown');
       document.getElementById('reply-ui').style.display = 'flex';
@@ -1150,30 +1173,52 @@
       setTimeout(() => { el.style.background = ''; }, 1500);
     }
 
+    function showEditUI(message) {
+      const editUi = document.getElementById('edit-ui');
+      const editTxt = document.getElementById('edit-ui-txt');
+      if (!editUi || !editTxt) return;
+      const text = String(message?.content || '').trim();
+      const preview = text.length > 90 ? `${text.slice(0, 90)}…` : text;
+      editUi.style.display = 'flex';
+      editTxt.innerHTML = `Editing <strong>your message</strong>${preview ? `: ${esc(preview)}` : ''}`;
+    }
+
+    function clearEditUI() {
+      const editUi = document.getElementById('edit-ui');
+      if (editUi) editUi.style.display = 'none';
+    }
+
     function startEdit(id) {
       const m = findMessageById(id);
       if (!m || m.author_id !== S.me?.id) return;
+      clearReply();
       S.editingId = id;
       const inp = document.getElementById('msg-input');
       inp.value = m.content || '';
       inp.placeholder = 'Edit message… (Esc to cancel)';
+      showEditUI(m);
       inp.focus();
       autoResize(inp);
     }
 
     async function finishEdit(content) {
       const id = S.editingId;
-      S.editingId = null;
-      updateHeader();
+      if (!id) return false;
       try {
         const out = await PATCH(`/channels/${S.activeCh.id}/messages/${id}`, { content });
+        S.editingId = null;
+        clearEditUI();
+        updateHeader();
         handleMessageUpdate(out);
+        return true;
       } catch (e) {
         toast(e.message, 'err');
+        return false;
       }
     }
     function cancelEdit() {
       S.editingId = null;
+      clearEditUI();
       const inp = document.getElementById('msg-input');
       inp.value = '';
       autoResize(inp);
