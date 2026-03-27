@@ -108,13 +108,13 @@
     }
 
     ::selection {
-      background: rgba(88, 101, 242, .38);
-      color: #f7f8ff;
+      background: transparent;
+      color: inherit;
     }
 
     ::-moz-selection {
-      background: rgba(88, 101, 242, .38);
-      color: #f7f8ff;
+      background: transparent;
+      color: inherit;
     }
 
     ::-webkit-scrollbar {
@@ -1121,8 +1121,8 @@
     }
 
     .input-box:focus-within {
-      border-color: rgba(88, 101, 242, .4);
-      box-shadow: 0 0 0 3px rgba(88, 101, 242, .12);
+      border-color: transparent;
+      box-shadow: none;
     }
 
     .reply-bar-ui+.input-box {
@@ -1371,9 +1371,9 @@
     }
 
     .fi:focus {
-      border-color: var(--brand);
-      box-shadow: 0 0 0 3px rgba(88, 101, 242, .12);
-      background: #12131a;
+      border-color: var(--border);
+      box-shadow: none;
+      background: #111114;
     }
 
     .fi::placeholder {

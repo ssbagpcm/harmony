@@ -3854,6 +3854,11 @@
     // ═══════════════════════════════════════════════════
     //  Profile / user actions
     // ═══════════════════════════════════════════════════
+    function canSendProfileDM(uid) {
+      if (uid === S.me?.id) return false;
+      return !(S.inDMs && S.activeCh?.type === 'dm');
+    }
+
     async function showUserProfile(uid) {
       closeAllPopups();
       const body = document.getElementById('profile-body');
@@ -3866,6 +3871,7 @@
         const status = S.presence[uid] || user.status || 'offline';
         const statusLabel = formatStatusLabel(status);
         const isMe = uid === S.me?.id;
+        const canMessage = canSendProfileDM(uid);
         const bannerStyle = user.banner_url
           ? `background:url(${escA(user.banner_url)}) center/cover;height:90px`
           : `background:#5865F2;height:90px`;
@@ -3885,7 +3891,7 @@
         ${user.pronouns ? `<div class="small-muted" style="margin-top:4px">${esc(user.pronouns)}</div>` : ''}
         ${user.bio ? `<div style="margin-top:12px;color:var(--t2)">${esc(user.bio)}</div>` : ''}
         <div style="display:flex;gap:8px;margin-top:16px">
-          ${!isMe ? `<button class="btn btn-primary" style="flex:1" onclick="sendDMTo('${uid}')">Message</button>` : ''}
+          ${canMessage ? `<button class="btn btn-primary" style="flex:1" onclick="sendDMTo('${uid}')">Message</button>` : ''}
         </div>
       </div>
     `;
@@ -4049,7 +4055,7 @@
       const notMe = uid !== S.me?.id;
       ctxMenu(event, [
         { icon: 'user', label: 'View Profile', fn: () => showUserProfile(uid) },
-        notMe ? { icon: 'message-square', label: 'Send Message', fn: () => sendDMTo(uid) } : null,
+        canSendProfileDM(uid) ? { icon: 'message-square', label: 'Send Message', fn: () => sendDMTo(uid) } : null,
         { icon: 'copy', label: 'Copy User ID', fn: () => navigator.clipboard.writeText(uid).then(() => toast('Copied', 'ok')) },
         notMe && canManageRoles() ? null : null,
         notMe && canManageRoles() ? { icon: 'shield', label: 'Manage Roles', fn: () => manageRoles(uid) } : null,

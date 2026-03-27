@@ -199,12 +199,12 @@ It is rendered as part of the UI, not as a raw file download page.
 
 ## Data Notes
 
-This version intentionally reuses the same project data as the original app:
+This version keeps all runtime data inside the Harmony project root:
 
-- database: `../discord.db`
+- database: `../database/discord.db`
 - uploads: `../uploads/`
 
-That means you can run the old version or the `new/` version against the same local data.
+The required directories are created automatically when the app loads.
 
 ## Development Notes
 

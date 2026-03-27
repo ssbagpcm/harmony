@@ -18,9 +18,13 @@ import time
 import uuid
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-NEW_ROOT = Path(__file__).resolve().parents[1]
-STATIC_DIR = NEW_ROOT / "static"
+APP_ROOT = Path(__file__).resolve().parents[1]
+DATABASE_DIR = APP_ROOT / "database"
+UPLOAD_PATH = APP_ROOT / "uploads"
+STATIC_DIR = APP_ROOT / "static"
+
+DATABASE_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_PATH.mkdir(parents=True, exist_ok=True)
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -71,12 +75,12 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 # ═══════════════════════════════════════════════════════════════════════════
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    f"sqlite+aiosqlite:///{(PROJECT_ROOT / 'discord.db').as_posix()}",
+    f"sqlite+aiosqlite:///{(DATABASE_DIR / 'discord.db').as_posix()}",
 )
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production!")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
-UPLOAD_DIR = str(PROJECT_ROOT / "uploads")
+UPLOAD_DIR = str(UPLOAD_PATH)
 MAX_UPLOAD_MB = 25
 HEARTBEAT_MS = 30_000
 ALLOWED_MIME = None
@@ -1391,6 +1395,16 @@ class GatewayManager:
             if uid != exclude_uid and channels.get(channel_id, 0) > now - 8
         ]
 
+    async def _recv_text(self, ws: WebSocket) -> str:
+        try:
+            return await ws.receive_text()
+        except RuntimeError as exc:
+            # Starlette may raise RuntimeError here when the socket is already closing,
+            # even though this should be treated like a normal disconnect.
+            if "WebSocket is not connected" in str(exc):
+                raise WebSocketDisconnect(code=1006) from exc
+            raise
+
     async def handle(self, ws: WebSocket, token: Optional[str]):
         await ws.accept()
         await ws.send_json({"op": "HELLO", "data": {"heartbeat_interval": HEARTBEAT_MS}})
@@ -1398,7 +1412,7 @@ class GatewayManager:
         uid = decode_token(token) if token else None
         if not uid:
             try:
-                raw = await ws.receive_text()
+                raw = await self._recv_text(ws)
                 msg = json.loads(raw)
                 if msg.get("op") == "IDENTIFY":
                     uid = decode_token((msg.get("data") or {}).get("token", ""))
@@ -1452,7 +1466,7 @@ class GatewayManager:
 
         try:
             while True:
-                raw = await ws.receive_text()
+                raw = await self._recv_text(ws)
                 try:
                     msg = json.loads(raw)
                 except Exception:
