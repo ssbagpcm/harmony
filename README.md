@@ -1,3 +1,9 @@
+# Harmony
+### Fully-featured chat app.
+
+Harmony is a modern communication platform designed to be a smoother and more powerful alternative to Discord. It offers a cleaner interface, better privacy controls, and faster performance for both communities and friends. With innovative features and fewer limitations, Harmony creates a more enjoyable and efficient chatting experience.
+
+
 # New Structure
 
 - `main.py`: launch entrypoint
