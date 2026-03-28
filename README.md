@@ -12,6 +12,8 @@ Harmony is a modern communication platform designed to be a smoother and more po
 - `static/styles.css`: extracted styles
 - `static/app.js`: extracted client logic
 
+<img width="1920" height="962" alt="image" src="https://github.com/user-attachments/assets/c2167dbe-4100-4500-b495-c90c0f5c52c4" />
+
 # Local deployements
 
 1) Create a venv and activate it
