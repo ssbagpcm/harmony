@@ -58,5 +58,10 @@ Harmony is a modern communication platform designed to be a smoother and more po
 
 <img width="1920" height="1043" alt="image" src="https://github.com/user-attachments/assets/a76da755-381c-4258-a007-64dda854e25a" />
 
+# NATIVE MEDIA VIEWER 
+
+<img width="1920" height="1043" alt="image" src="https://github.com/user-attachments/assets/d62231e9-4ee4-4784-8209-eee209bc58ba" />
+
+
 ### Want to help me ?
 Create an issue with what you want next !
