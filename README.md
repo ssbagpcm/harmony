@@ -10,8 +10,7 @@
 # Run the app 
 
 1) Create a venv and activate it
-   ```python3 -m venv venv```
-   ```source venv/bin/activate```
+   ```python3 -m venv venv && source venv/bin/activate```
 
 3) Once done, install the packages
    ```pip install -r requirements.txt```
